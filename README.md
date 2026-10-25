@@ -52,7 +52,8 @@ ARM gcc is needed.
 ```sh
 host/run-app.sh hello      # build, copy to /mnt/us/kindle-dev/, run over ssh
 cargo test                 # host-side tests of the pure drawing code
-cargo mutants              # every viable mutant of the pure drawing code is caught
+cargo mutants              # every viable mutant is caught; .cargo/mutants.toml leaves out
+                           # only code that needs the device (ioctls, main, run)
 ```
 
 `hello` draws a test page: banner, device facts, 16 gray swatches. The screen is
@@ -62,6 +63,29 @@ uses FBInk's `mxcfb_update_data` (72 bytes) and the `_IOWR` `MXCFB_WAIT_FOR_UPDA
 (`.ref/FBInk/eink/mxcfb-kindle.h`). `eink/src/epdc.rs` is the only module allowed `unsafe`;
 compile-time asserts pin each ioctl struct's size, since the ioctl number encodes it.
 The Kindle UI still owns the screen and redraws over the page when it next updates.
+
+## Claude Code usage on the Kindle
+
+`usage` draws what Omarchy's agents panel shows for Claude: plan, each limit's meter and
+reset countdown, tokens by day for the last week (today bold, with its prompts and
+sessions), and the four heaviest models. It reads the same record the panel reads,
+`~/.local/state/omarchy/agents/usage/claude.json`, which the panel's collector
+(`omarchy-agent-usage-update`) rewrites every 15 minutes while the Omarchy shell runs.
+
+```sh
+host/push-usage.sh          # pipe the record to the Kindle over ssh and redraw
+host/push-usage.sh --flash  # same, with a full flashing refresh
+```
+
+devbox pushes and the Kindle only draws, so the Kindle needs no network code and devbox
+no listener. devbox's clock is the only clock: `--now` carries its time and UTC offset, from
+which the Kindle computes countdowns and today's row. Refreshes are quiet (no flash)
+except in the first five minutes of each hour, to clear e-ink ghosting.
+
+The page stays up while the Kindle sits in its screensaver state; waking the Kindle hands
+the screen back to its UI until the next push. The layout is pinned by
+`usage/golden/full.pgm`; after an intended layout change, review the new page and rewrite
+it with `UPDATE_GOLDEN=1 cargo test -p usage golden`.
 
 ## Device facts
 

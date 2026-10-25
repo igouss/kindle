@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn each_swatch_is_painted_its_level() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let canvas: Canvas = render(
             &Facts {
                 geometry: PW2,
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn the_banner_is_black_where_no_title_falls() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let canvas: Canvas = render(
             &Facts {
                 geometry: PW2,
@@ -195,7 +195,7 @@ mod tests {
     }
 
     fn rendered() -> Canvas {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         render(
             &Facts {
                 geometry: PW2,

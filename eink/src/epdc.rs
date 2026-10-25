@@ -15,6 +15,7 @@ const GRAYSCALE_8BIT: u32 = 1;
 const WAVEFORM_MODE_DU: u32 = 1;
 const WAVEFORM_MODE_GC16: u32 = 2;
 const WAVEFORM_MODE_GC16_FAST: u32 = 3;
+const UPDATE_MODE_PARTIAL: u32 = 0;
 const UPDATE_MODE_FULL: u32 = 1;
 const TEMP_USE_AUTO: i32 = 0x1001;
 
@@ -169,6 +170,12 @@ impl std::fmt::Display for Fault {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refresh {
+    Flash,
+    Quiet,
+}
+
 pub struct Epdc {
     device: File,
     geometry: Geometry,
@@ -211,7 +218,7 @@ impl Epdc {
         self.geometry
     }
 
-    pub fn present(&self, canvas: &Canvas, marker: u32) -> Result<i32, Fault> {
+    pub fn present(&self, canvas: &Canvas, marker: u32, refresh: Refresh) -> Result<i32, Fault> {
         if canvas.geometry() != self.geometry {
             return Err(Fault::Mismatch {
                 expected: self.geometry,
@@ -230,7 +237,10 @@ impl Epdc {
                 height: self.geometry.height,
             },
             waveform_mode: WAVEFORM_MODE_GC16,
-            update_mode: UPDATE_MODE_FULL,
+            update_mode: match refresh {
+                Refresh::Flash => UPDATE_MODE_FULL,
+                Refresh::Quiet => UPDATE_MODE_PARTIAL,
+            },
             update_marker: marker,
             hist_bw_waveform_mode: WAVEFORM_MODE_DU,
             hist_gray_waveform_mode: WAVEFORM_MODE_GC16_FAST,

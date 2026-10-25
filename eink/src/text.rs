@@ -2,15 +2,24 @@ use fontdue::{Font, FontSettings, Metrics};
 
 use crate::canvas::Canvas;
 
-const FACE: &[u8] = include_bytes!("../assets/LiberationSans-Regular.ttf");
+const REGULAR: &[u8] = include_bytes!("../assets/LiberationSans-Regular.ttf");
+const BOLD: &[u8] = include_bytes!("../assets/LiberationSans-Bold.ttf");
 
 pub struct Typeface {
     font: Font,
 }
 
 impl Typeface {
-    pub fn embedded() -> Result<Typeface, &'static str> {
-        Font::from_bytes(FACE, FontSettings::default()).map(|font: Font| Typeface { font })
+    pub fn regular() -> Result<Typeface, &'static str> {
+        Typeface::parse(REGULAR)
+    }
+
+    pub fn bold() -> Result<Typeface, &'static str> {
+        Typeface::parse(BOLD)
+    }
+
+    fn parse(face: &[u8]) -> Result<Typeface, &'static str> {
+        Font::from_bytes(face, FontSettings::default()).map(|font: Font| Typeface { font })
     }
 
     pub fn width(&self, text: &str, size: f32) -> u32 {
@@ -63,7 +72,7 @@ mod tests {
 
     #[test]
     fn empty_text_has_no_width_and_inks_nothing() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let mut canvas: Canvas = Canvas::new(AREA);
         face.draw(&mut canvas, "", 32.0, 10, 40, BLACK);
         assert_eq!((face.width("", 32.0), inked(&canvas)), (0, vec![]));
@@ -71,7 +80,7 @@ mod tests {
 
     #[test]
     fn a_glyph_inks_only_above_the_baseline_and_within_its_advance() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let mut canvas: Canvas = Canvas::new(AREA);
         face.draw(&mut canvas, "H", 32.0, 10, 40, BLACK);
         let ink: Vec<(u32, u32)> = inked(&canvas);
@@ -86,7 +95,7 @@ mod tests {
 
     #[test]
     fn a_capital_stands_on_the_baseline_at_its_full_height() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let mut canvas: Canvas = Canvas::new(AREA);
         face.draw(&mut canvas, "H", 32.0, 10, 40, BLACK);
         let rows: Vec<u32> = inked(&canvas)
@@ -99,7 +108,7 @@ mod tests {
 
     #[test]
     fn a_descender_hangs_below_the_baseline() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let mut canvas: Canvas = Canvas::new(AREA);
         face.draw(&mut canvas, "p", 32.0, 10, 40, BLACK);
         assert!(inked(&canvas).iter().any(|&(_, y): &(u32, u32)| y > 44));
@@ -107,7 +116,7 @@ mod tests {
 
     #[test]
     fn a_glyph_reaches_full_ink_in_its_stem() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let mut canvas: Canvas = Canvas::new(AREA);
         face.draw(&mut canvas, "H", 32.0, 10, 40, BLACK);
         assert!(
@@ -118,8 +127,35 @@ mod tests {
     }
 
     #[test]
+    fn bold_strokes_are_heavier_than_regular() {
+        let (regular, bold): (Typeface, Typeface) =
+            (Typeface::regular().unwrap(), Typeface::bold().unwrap());
+        let mut thin: Canvas = Canvas::new(AREA);
+        let mut heavy: Canvas = Canvas::new(AREA);
+        regular.draw(&mut thin, "l", 32.0, 10, 40, BLACK);
+        bold.draw(&mut heavy, "l", 32.0, 10, 40, BLACK);
+        assert!(inked(&heavy).len() > inked(&thin).len());
+    }
+
+    #[test]
+    fn the_second_glyph_starts_one_advance_after_the_first() {
+        let face: Typeface = Typeface::regular().unwrap();
+        let (mut one, mut two): (Canvas, Canvas) = (Canvas::new(AREA), Canvas::new(AREA));
+        face.draw(&mut one, "I", 32.0, 10, 40, BLACK);
+        face.draw(&mut two, "II", 32.0, 10, 40, BLACK);
+        let right = |canvas: &Canvas| -> u32 {
+            inked(canvas)
+                .iter()
+                .map(|&(x, _): &(u32, u32)| x)
+                .max()
+                .unwrap()
+        };
+        assert!(right(&two).abs_diff(right(&one) + face.width("I", 32.0)) <= 1);
+    }
+
+    #[test]
     fn many_glyphs_advance_left_to_right() {
-        let face: Typeface = Typeface::embedded().unwrap();
+        let face: Typeface = Typeface::regular().unwrap();
         let mut canvas: Canvas = Canvas::new(AREA);
         face.draw(&mut canvas, "II", 32.0, 10, 40, BLACK);
         let one: u32 = face.width("I", 32.0);

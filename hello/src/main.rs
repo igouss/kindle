@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use eink::canvas::Canvas;
-use eink::epdc::Epdc;
+use eink::epdc::{Epdc, Refresh};
 use eink::text::Typeface;
 use screen::Facts;
 
@@ -21,7 +21,7 @@ fn uptime() -> Duration {
 
 fn main() -> ExitCode {
     let started: Instant = Instant::now();
-    let face: Typeface = match Typeface::embedded() {
+    let face: Typeface = match Typeface::regular() {
         Ok(face) => face,
         Err(fault) => {
             eprintln!("hello: font: {fault}");
@@ -44,7 +44,7 @@ fn main() -> ExitCode {
         &face,
     );
     let drawn: Duration = started.elapsed();
-    match epdc.present(&canvas, std::process::id()) {
+    match epdc.present(&canvas, std::process::id(), Refresh::Flash) {
         Ok(waited) => {
             println!(
                 "drawn in {drawn:?}, refreshed in {:?}, wait returned {waited}",

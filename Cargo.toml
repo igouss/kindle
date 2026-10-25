@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["eink", "hello"]
+members = ["eink", "hello", "usage"]
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -1,0 +1,2 @@
+exclude_globs = ["eink/src/epdc.rs"]
+exclude_re = ["replace main -> ExitCode", "replace run -> Result", "replace uptime -> Duration"]
