@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["hello"]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+wildcard_enum_match_arm = "deny"
+
+[profile.release]
+panic = "abort"
+lto = true
+strip = true
