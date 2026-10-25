@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly KINDLE=kindle
+readonly SSH=(ssh -o BatchMode=yes -o LogLevel=ERROR)
+readonly REMOTE_PATH="PATH=/usr/sbin:/sbin:/usr/bin:/bin"
+readonly JOB=kindle-uplink.conf
+readonly LOCAL_JOB="$(dirname "$(readlink -f "$0")")/../kindle/upstart/$JOB"
+
+"${SSH[@]}" "$KINDLE" "$REMOTE_PATH; mntroot rw && cat > /etc/upstart/$JOB && mntroot ro" < "$LOCAL_JOB"
+"${SSH[@]}" "$KINDLE" "cmp /etc/upstart/$JOB -" < "$LOCAL_JOB"
+"${SSH[@]}" "$KINDLE" "$REMOTE_PATH; initctl start ${JOB%.conf}; route -n | grep '^0\.0\.0\.0'; cat /etc/resolv.conf"
