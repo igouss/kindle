@@ -77,6 +77,9 @@ host/push-usage.sh          # pipe the record to the Kindle over ssh and redraw
 host/push-usage.sh --flash  # same, with a full flashing refresh
 ```
 
+`kindle-usage.timer` (a systemd user unit kept in the dotfiles repo) runs the push every
+5 minutes; while the Kindle is unplugged each run fails and the next one recovers.
+
 devbox pushes and the Kindle only draws, so the Kindle needs no network code and devbox
 no listener. devbox's clock is the only clock: `--now` carries its time and UTC offset, from
 which the Kindle computes countdowns and today's row. Refreshes are quiet (no flash)
