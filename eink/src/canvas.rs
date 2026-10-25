@@ -38,7 +38,6 @@ impl Canvas {
         &self.pixels
     }
 
-    #[cfg(test)]
     pub fn pixel(&self, x: u32, y: u32) -> Option<u8> {
         self.index(x, y).map(|i: usize| self.pixels[i])
     }

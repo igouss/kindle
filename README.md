@@ -43,7 +43,8 @@ fail if the job did not run.
 
 ## Rust apps
 
-Each app is a crate in the workspace, cross-compiled to `armv7-unknown-linux-musleabi`: static
+Each app is a crate in the workspace, drawing through the shared `eink` crate (canvas, fonts,
+panel refresh), cross-compiled to `armv7-unknown-linux-musleabi`: static
 musl, so the firmware's old glibc never matters, and soft-float to match its armel ABI.
 `rust-toolchain.toml` installs the target; `.cargo/config.toml` links with `rust-lld`, so no
 ARM gcc is needed.
@@ -51,14 +52,14 @@ ARM gcc is needed.
 ```sh
 host/run-app.sh hello      # build, copy to /mnt/us/kindle-dev/, run over ssh
 cargo test                 # host-side tests of the pure drawing code
-cargo mutants -p hello     # every viable mutant of canvas/screen/text is caught
+cargo mutants              # every viable mutant of the pure drawing code is caught
 ```
 
 `hello` draws a test page: banner, device facts, 16 gray swatches. The screen is
 `/dev/fb0`, 8 bpp gray (0 black, 255 white), 758x1024 visible in a 768-byte stride. Writing
 it changes nothing on the panel until `MXCFB_SEND_UPDATE` is issued; the PW2 (Carta panel)
 uses FBInk's `mxcfb_update_data` (72 bytes) and the `_IOWR` `MXCFB_WAIT_FOR_UPDATE_COMPLETE`
-(`.ref/FBInk/eink/mxcfb-kindle.h`). `hello/src/epdc.rs` is the only module allowed `unsafe`;
+(`.ref/FBInk/eink/mxcfb-kindle.h`). `eink/src/epdc.rs` is the only module allowed `unsafe`;
 compile-time asserts pin each ioctl struct's size, since the ioctl number encodes it.
 The Kindle UI still owns the screen and redraws over the page when it next updates.
 

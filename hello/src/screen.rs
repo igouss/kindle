@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use crate::canvas::{BLACK, Canvas, Geometry, Rect, WHITE};
-use crate::text::Typeface;
+use eink::canvas::{BLACK, Canvas, Geometry, Rect, WHITE};
+use eink::text::Typeface;
 
 pub const LEVELS: u32 = 16;
 const MARGIN: i32 = 40;

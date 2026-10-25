@@ -36,6 +36,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "eink"
+version = "0.1.0"
+dependencies = [
+ "fontdue",
+ "nix",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -72,8 +80,7 @@ dependencies = [
 name = "hello"
 version = "0.1.0"
 dependencies = [
- "fontdue",
- "nix",
+ "eink",
 ]
 
 [[package]]

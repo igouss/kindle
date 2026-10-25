@@ -1,15 +1,12 @@
-mod canvas;
-mod epdc;
 mod screen;
-mod text;
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use canvas::Canvas;
-use epdc::Epdc;
+use eink::canvas::Canvas;
+use eink::epdc::Epdc;
+use eink::text::Typeface;
 use screen::Facts;
-use text::Typeface;
 
 fn uptime() -> Duration {
     std::fs::read_to_string("/proc/uptime")
