@@ -6,7 +6,7 @@ use std::io::Read;
 use std::process::ExitCode;
 
 use chrono::{DateTime, FixedOffset};
-use eink::canvas::Canvas;
+use eink::canvas::{Canvas, Geometry, Port};
 use eink::epdc::{Epdc, Refresh};
 use eink::text::Typeface;
 
@@ -14,20 +14,30 @@ use record::Record;
 use screen::Faces;
 use view::Dashboard;
 
-const USAGE: &str = "usage: usage --now <RFC 3339 time> [--flash] < claude.json";
+const USAGE: &str =
+    "usage: usage --now <RFC 3339 time> [--port left|right] [--flash] < claude.json";
 
 struct Options {
     now: DateTime<FixedOffset>,
     refresh: Refresh,
+    port: Port,
 }
 
 fn options(args: &[String]) -> Result<Options, String> {
     let mut now: Option<DateTime<FixedOffset>> = None;
     let mut refresh: Refresh = Refresh::Quiet;
+    let mut port: Port = Port::Left;
     let mut rest: std::slice::Iter<'_, String> = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--flash" => refresh = Refresh::Flash,
+            "--port" => {
+                port = match rest.next().map(String::as_str) {
+                    Some("left") => Port::Left,
+                    Some("right") => Port::Right,
+                    _ => return Err(String::from(USAGE)),
+                }
+            }
             "--now" => {
                 let text: &String = rest.next().ok_or(USAGE)?;
                 now = Some(
@@ -41,6 +51,7 @@ fn options(args: &[String]) -> Result<Options, String> {
     Ok(Options {
         now: now.ok_or(USAGE)?,
         refresh,
+        port,
     })
 }
 
@@ -59,7 +70,9 @@ fn run() -> Result<(), String> {
     };
     let epdc: Epdc = Epdc::open().map_err(|e: eink::epdc::Fault| e.to_string())?;
     let view: Dashboard = view::dashboard(&record, options.now);
-    let canvas: Canvas = screen::render(&view, &faces, epdc.geometry());
+    let panel: Geometry = epdc.geometry();
+    let page: Canvas = screen::render(&view, &faces, panel.landscape());
+    let canvas: Canvas = page.upright(options.port, panel.stride);
     epdc.present(&canvas, std::process::id(), options.refresh)
         .map_err(|e: eink::epdc::Fault| e.to_string())?;
     println!(
@@ -95,6 +108,38 @@ mod tests {
         assert_eq!(
             (parsed.now.to_rfc3339(), parsed.refresh),
             (String::from("2026-10-25T19:41:30-04:00"), Refresh::Quiet)
+        );
+    }
+
+    #[test]
+    fn the_port_defaults_to_left_and_can_be_put_right() {
+        let now: [&str; 2] = ["--now", "2026-10-25T19:41:30-04:00"];
+        let default: Port = options(&args(&now)).unwrap().port;
+        let right: Port = options(&args(&[now[0], now[1], "--port", "right"]))
+            .unwrap()
+            .port;
+        let left: Port = options(&args(&["--port", "left", now[0], now[1]]))
+            .unwrap()
+            .port;
+        assert_eq!(
+            (default, right, left),
+            (Port::Left, Port::Right, Port::Left)
+        );
+    }
+
+    #[test]
+    fn a_missing_or_unknown_port_is_refused() {
+        let missing: Result<Options, String> =
+            options(&args(&["--now", "2026-10-25T19:41:30-04:00", "--port"]));
+        let unknown: Result<Options, String> = options(&args(&[
+            "--port",
+            "up",
+            "--now",
+            "2026-10-25T19:41:30-04:00",
+        ]));
+        assert_eq!(
+            (missing.err(), unknown.err()),
+            (Some(String::from(USAGE)), Some(String::from(USAGE)))
         );
     }
 

@@ -4,7 +4,7 @@ A jailbroken Kindle Paperwhite 2 used as an e-ink dashboard, plugged into a Linu
 The PC gives the Kindle a network and internet access over the cable, and small static Rust
 programs draw straight to the e-ink panel.
 
-<img src="docs/usage.png" alt="The Kindle showing Claude Code usage: plan, limit meters, tokens by day and by model" width="379">
+<img src="docs/usage.png" alt="The Kindle in landscape showing Claude Code usage: plan, limit meters, tokens by model and by day" width="512">
 
 The first real app shows Claude Code usage (rate limits, tokens per day, tokens per model),
 the same numbers [Omarchy](https://omarchy.org)'s agents panel shows on the desktop.
@@ -143,6 +143,13 @@ cargo test              # tests run on the PC; nothing in them needs the device
 `usage` draws what Omarchy's agents panel shows for Claude Code: the plan, each rate
 limit's meter and reset countdown, tokens per day for the last week (today in bold, with
 its prompt and session counts), and the four heaviest models.
+
+The page is landscape, for a Kindle standing on its long edge. The PW2 has no
+accelerometer (its firmware's `accelerometer` property always reads `U`), so it cannot tell
+which way it is turned. Say where the USB port is instead: `usage --port right` (the
+default in `host/push-usage.sh`) or `--port left`, or set `KINDLE_PORT=left` for the push
+script. The page is drawn at 1024×758 and turned in software (`Canvas::upright` in
+`eink`) before it reaches the portrait framebuffer.
 
 The PC pushes and the Kindle only draws:
 

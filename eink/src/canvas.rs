@@ -16,6 +16,22 @@ pub struct Rect {
     pub height: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Port {
+    Left,
+    Right,
+}
+
+impl Geometry {
+    pub fn landscape(self) -> Geometry {
+        Geometry {
+            width: self.height,
+            height: self.width,
+            stride: self.height,
+        }
+    }
+}
+
 pub struct Canvas {
     geometry: Geometry,
     pixels: Vec<u8>,
@@ -63,6 +79,26 @@ impl Canvas {
         }
     }
 
+    pub fn upright(&self, port: Port, stride: u32) -> Canvas {
+        let source: Geometry = self.geometry;
+        let mut out: Canvas = Canvas::new(Geometry {
+            width: source.height,
+            height: source.width,
+            stride: stride.max(source.height),
+        });
+        for y in 0..source.width {
+            for x in 0..source.height {
+                let (from_x, from_y): (u32, u32) = match port {
+                    Port::Left => (source.width - 1 - y, x),
+                    Port::Right => (y, source.height - 1 - x),
+                };
+                let to: usize = out.offset(x, y);
+                out.pixels[to] = self.pixels[self.offset(from_x, from_y)];
+            }
+        }
+        out
+    }
+
     fn index(&self, x: u32, y: u32) -> Option<usize> {
         (x < self.geometry.width && y < self.geometry.height).then(|| self.offset(x, y))
     }
@@ -96,6 +132,108 @@ mod tests {
                 canvas.pixels()[(y * geometry.stride + x) as usize] != WHITE
             })
             .collect()
+    }
+
+    fn numbered(geometry: Geometry) -> Canvas {
+        let mut canvas: Canvas = Canvas::new(geometry);
+        for y in 0..geometry.height {
+            for x in 0..geometry.width {
+                let gray: u8 = (10 * y + x) as u8;
+                canvas.fill_rect(
+                    Rect {
+                        left: x as i32,
+                        top: y as i32,
+                        width: 1,
+                        height: 1,
+                    },
+                    gray,
+                );
+            }
+        }
+        canvas
+    }
+
+    fn rows(canvas: &Canvas) -> Vec<Vec<Option<u8>>> {
+        let geometry: Geometry = canvas.geometry();
+        (0..geometry.height)
+            .map(|y: u32| {
+                (0..geometry.width)
+                    .map(|x: u32| canvas.pixel(x, y))
+                    .collect()
+            })
+            .collect()
+    }
+
+    const WIDE: Geometry = Geometry {
+        width: 3,
+        height: 2,
+        stride: 3,
+    };
+
+    #[test]
+    fn landscape_swaps_width_and_height_with_a_packed_stride() {
+        assert_eq!(
+            SMALL.landscape(),
+            Geometry {
+                width: 3,
+                height: 4,
+                stride: 3
+            }
+        );
+    }
+
+    #[test]
+    fn port_left_puts_the_page_top_along_the_panels_left_edge() {
+        let upright: Canvas = numbered(WIDE).upright(Port::Left, 4);
+        let expected: Vec<Vec<Option<u8>>> = vec![
+            vec![Some(2), Some(12)],
+            vec![Some(1), Some(11)],
+            vec![Some(0), Some(10)],
+        ];
+        assert_eq!(
+            (upright.geometry(), rows(&upright)),
+            (
+                Geometry {
+                    width: 2,
+                    height: 3,
+                    stride: 4
+                },
+                expected
+            )
+        );
+    }
+
+    #[test]
+    fn port_right_puts_the_page_top_along_the_panels_right_edge() {
+        let upright: Canvas = numbered(WIDE).upright(Port::Right, 2);
+        let expected: Vec<Vec<Option<u8>>> = vec![
+            vec![Some(10), Some(0)],
+            vec![Some(11), Some(1)],
+            vec![Some(12), Some(2)],
+        ];
+        assert_eq!(rows(&upright), expected);
+    }
+
+    #[test]
+    fn turning_one_way_then_the_other_restores_the_page() {
+        let page: Canvas = numbered(WIDE);
+        let back: Canvas = page.upright(Port::Left, 2).upright(Port::Right, 3);
+        assert_eq!(back.pixels(), page.pixels());
+    }
+
+    #[test]
+    fn a_stride_narrower_than_the_turned_width_is_widened() {
+        assert_eq!(numbered(WIDE).upright(Port::Left, 1).geometry().stride, 2);
+    }
+
+    #[test]
+    fn an_empty_page_turns_into_an_empty_page() {
+        let empty: Canvas = Canvas::new(Geometry {
+            width: 0,
+            height: 0,
+            stride: 0,
+        });
+        assert_eq!(empty.upright(Port::Right, 0).pixels(), &[] as &[u8]);
     }
 
     #[test]
