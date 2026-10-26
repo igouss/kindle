@@ -50,6 +50,7 @@ pub enum Work {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
     Bead,
+    Graph,
     Usage,
 }
 
@@ -156,6 +157,13 @@ fn shown(state: &State, view: View, refresh: Refresh) -> Vec<Effect> {
     }
 }
 
+fn work_shown(state: &State) -> Vec<Effect> {
+    match state.view {
+        View::Bead | View::Graph => vec![Effect::Draw(Refresh::Quiet)],
+        View::Usage => vec![],
+    }
+}
+
 fn sighted(state: State, feed: BeadFeed, pages: usize) -> (State, Vec<Effect>) {
     let BeadFeed { bead, epic, now } = feed;
     let state: State = State { epic, ..state };
@@ -173,7 +181,7 @@ fn sighted(state: State, feed: BeadFeed, pages: usize) -> (State, Vec<Effect>) {
     };
     match (bead, kept) {
         (Some(bead), Some((page, quiet))) => {
-            let effects: Vec<Effect> = shown(&state, View::Bead, Refresh::Quiet);
+            let effects: Vec<Effect> = work_shown(&state);
             let work: Work = Work::Active {
                 bead,
                 now,
@@ -198,8 +206,17 @@ fn sighted(state: State, feed: BeadFeed, pages: usize) -> (State, Vec<Effect>) {
             },
             vec![Effect::Draw(Refresh::Flash)],
         ),
+        (None, _) if matches!(state.work, Work::Active { .. }) => (
+            State {
+                view: View::Graph,
+                menu: Menu::Closed,
+                work: Work::Idle { now },
+                ..state
+            },
+            vec![Effect::Draw(Refresh::Flash)],
+        ),
         (None, _) => {
-            let effects: Vec<Effect> = shown(&state, View::Bead, Refresh::Quiet);
+            let effects: Vec<Effect> = work_shown(&state);
             (
                 State {
                     work: Work::Idle { now },
@@ -285,9 +302,10 @@ fn leaf(state: State, direction: Direction) -> (State, Vec<Effect>) {
             (State { work, ..state }, effects)
         }
         (View::Bead, work @ (Work::Unknown | Work::Idle { .. }))
-        | (View::Usage, work @ (Work::Unknown | Work::Idle { .. } | Work::Active { .. })) => {
-            (State { work, ..state }, vec![])
-        }
+        | (
+            View::Graph | View::Usage,
+            work @ (Work::Unknown | Work::Idle { .. } | Work::Active { .. }),
+        ) => (State { work, ..state }, vec![]),
     }
 }
 

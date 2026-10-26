@@ -11,6 +11,11 @@ chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 eink = { path = "crates/eink" }
 fontdue = "0.9.5"
 franken_markdown = { git = "https://github.com/igouss/franken_markdown", rev = "4b705d147c10cebb52866f37dbdb1492ce8505ea", default-features = false }
+fm-core = { git = "https://github.com/igouss/frankenmermaid", rev = "4ffbd663130151f7ac77735c8fc855814da98bf1" }
+fm-layout = { git = "https://github.com/igouss/frankenmermaid", rev = "4ffbd663130151f7ac77735c8fc855814da98bf1" }
+fm-parser = { git = "https://github.com/igouss/frankenmermaid", rev = "4ffbd663130151f7ac77735c8fc855814da98bf1" }
+fm-render-canvas = { git = "https://github.com/igouss/frankenmermaid", rev = "4ffbd663130151f7ac77735c8fc855814da98bf1" }
+tiny-skia = { version = "0.11.4", default-features = false, features = ["std"] }
 nix = { version = "0.31.3", default-features = false, features = ["ioctl"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

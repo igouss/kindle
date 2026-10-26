@@ -197,12 +197,21 @@ host/push-usage.sh --flash  # the same, with a full refresh that clears ghosting
 
 ### The bead being worked on
 
-The header is a tab strip: **Bead** and **Usage**, with ☰ at the right. Tapping a tab shows
+The header is a tab strip: **Bead**, **Graph** and **Usage**, with ☰ at the right. Tapping a tab shows
 it; the usage dashboard is the Usage tab. The Bead tab shows the bead in progress on devbox:
 its project and id, title, priority, type and assignee, then its description, rendered from
 Markdown by [franken_markdown](https://github.com/igouss/franken_markdown) (pinned to a
 commit of the fork in the workspace manifest). It says "Nothing in progress" when there is
 none, and "Waiting for devbox" until the first bead push since the dashboard started.
+
+The Graph tab draws the bead's epic: each bead with its short id and the start of its title,
+and an arrow from each blocker to what it blocks. In progress is inverted, closed is gray,
+ready (open, every blocker closed) has a heavy border, and the rest wait. It is drawn on the
+Kindle by [frankenmermaid](https://github.com/igouss/frankenmermaid) (pinned to a commit of
+the fork): its canvas renderer paints through `crates/usage/src/graph/paint.rs`, a Canvas 2D
+context on [tiny-skia](https://github.com/linebender/tiny-skia) turned to grays, with labels
+set afterwards in the dashboard's Liberation Sans. When the bead in progress closes, the
+dashboard switches to the Graph tab, where it now shows as closed.
 
 The description reads like a book, a page at a time:
 

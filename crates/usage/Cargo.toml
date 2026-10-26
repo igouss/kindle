@@ -7,8 +7,13 @@ edition.workspace = true
 chrono.workspace = true
 eink.workspace = true
 franken_markdown.workspace = true
+fm-core.workspace = true
+fm-layout.workspace = true
+fm-parser.workspace = true
+fm-render-canvas.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tiny-skia.workspace = true
 
 [lints]
 workspace = true

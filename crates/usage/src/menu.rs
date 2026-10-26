@@ -10,7 +10,7 @@ pub const BUTTON: Rect = Rect {
     width: 90,
     height: HEADER,
 };
-pub const TABS: [(View, Rect); 2] = [
+pub const TABS: [(View, Rect); 3] = [
     (
         View::Bead,
         Rect {
@@ -21,9 +21,18 @@ pub const TABS: [(View, Rect); 2] = [
         },
     ),
     (
-        View::Usage,
+        View::Graph,
         Rect {
             left: 184,
+            top: 0,
+            width: 160,
+            height: HEADER,
+        },
+    ),
+    (
+        View::Usage,
+        Rect {
+            left: 352,
             top: 0,
             width: 160,
             height: HEADER,

@@ -548,37 +548,74 @@ fn a_different_bead_starts_again_at_its_first_page_on_the_bead_tab() {
 }
 
 #[test]
-fn nothing_in_progress_makes_the_work_idle_and_keeps_the_tab() {
+fn the_active_bead_closing_opens_the_graph_with_a_flash_and_closes_the_menu() {
     let reading: State = State {
         view: View::Bead,
+        menu: Menu::Open,
         work: active("a", 3),
         ..state(Menu::Closed, 12, true)
     };
     let (closed, effects): (State, Vec<Effect>) = step(reading, sighting(None));
-    let (never, never_effects): (State, Vec<Effect>) =
-        step(state(Menu::Closed, 12, true), sighting(None));
     assert_eq!(
+        (closed.view, closed.menu, closed.work, effects),
         (
-            closed.view,
-            closed.work,
-            effects,
-            never.view,
-            never.work,
-            never_effects
-        ),
-        (
-            View::Bead,
+            View::Graph,
+            Menu::Closed,
             Work::Idle {
                 now: at("2026-10-26T09:30:00-04:00")
             },
-            vec![Effect::Draw(Refresh::Quiet)],
-            View::Usage,
-            Work::Idle {
-                now: at("2026-10-26T09:30:00-04:00")
-            },
-            vec![]
+            vec![Effect::Draw(Refresh::Flash)]
         )
     );
+}
+
+#[test]
+fn nothing_in_progress_when_nothing_was_stays_put_and_redraws_only_work_tabs() {
+    let on_usage: (State, Vec<Effect>) = step(state(Menu::Closed, 12, true), sighting(None));
+    let on_graph: (State, Vec<Effect>) = step(
+        State {
+            view: View::Graph,
+            ..state(Menu::Closed, 12, true)
+        },
+        sighting(None),
+    );
+    assert_eq!(
+        (on_usage.0.view, on_usage.1, on_graph.0.view, on_graph.1),
+        (
+            View::Usage,
+            vec![],
+            View::Graph,
+            vec![Effect::Draw(Refresh::Quiet)]
+        )
+    );
+}
+
+#[test]
+fn the_same_bead_again_redraws_the_graph_where_it_shows() {
+    let graph: State = State {
+        view: View::Graph,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    assert_eq!(
+        step(graph, sighting(Some(bead("a")))).1,
+        vec![Effect::Draw(Refresh::Quiet)]
+    );
+}
+
+#[test]
+fn page_taps_do_nothing_on_the_graph_tab() {
+    let graph: State = State {
+        view: View::Graph,
+        work: active("a", 2),
+        ..state(Menu::Closed, 12, true)
+    };
+    let expected: State = State {
+        view: View::Graph,
+        work: active("a", 2),
+        ..state(Menu::Closed, 12, true)
+    };
+    assert_eq!(step(graph, tap_at(FORWARD)), (expected, vec![]));
 }
 
 #[test]

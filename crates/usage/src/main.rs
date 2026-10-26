@@ -1,5 +1,6 @@
 mod app;
 mod bead;
+mod graph;
 mod menu;
 mod message;
 mod reader;

@@ -2,6 +2,7 @@ use eink::canvas::{BLACK, Canvas, Geometry, Port, Rect, WHITE};
 use eink::text::Typeface;
 
 use crate::app::{Light, View};
+use crate::bead::Epic;
 use crate::menu::{self, Target};
 use crate::view::{BeadPage, Dashboard};
 
@@ -51,6 +52,7 @@ pub struct MenuView {
 
 pub enum Page<'a> {
     Bead(&'a BeadPage),
+    Graph(Option<&'a Epic>),
     Usage(&'a Dashboard),
 }
 
@@ -66,6 +68,10 @@ pub fn render(
             header(&mut canvas, faces, View::Bead);
             bead::page(&mut canvas, bead, faces);
         }
+        Page::Graph(epic) => {
+            header(&mut canvas, faces, View::Graph);
+            graph_page(&mut canvas, *epic, faces);
+        }
         Page::Usage(view) => {
             header(&mut canvas, faces, View::Usage);
             usage::page(&mut canvas, view, faces);
@@ -75,6 +81,27 @@ pub fn render(
         panel(&mut canvas, menu, faces);
     }
     canvas
+}
+
+fn graph_page(canvas: &mut Canvas, epic: Option<&Epic>, faces: &Faces) {
+    let top: i32 = menu::HEADER as i32;
+    match epic {
+        Some(epic) => {
+            faces
+                .regular
+                .draw(canvas, &epic.title, 24.0, MARGIN, top + 36, SOFT);
+            let area: Rect = Rect {
+                left: 0,
+                top: top + 48,
+                width: canvas.geometry().width,
+                height: canvas.geometry().height - (top + 48) as u32,
+            };
+            crate::graph::draw(canvas, faces, epic, area);
+        }
+        None => faces
+            .bold
+            .draw(canvas, "No epic yet", 40.0, MARGIN, top + 90, BLACK),
+    }
 }
 
 fn header(canvas: &mut Canvas, faces: &Faces, shown: View) {
@@ -91,6 +118,7 @@ fn header(canvas: &mut Canvas, faces: &Faces, shown: View) {
     for (view, rect) in menu::TABS {
         let label: &str = match view {
             View::Bead => "Bead",
+            View::Graph => "Graph",
             View::Usage => "Usage",
         };
         let ink: u8 = if view == shown {

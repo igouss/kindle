@@ -1,0 +1,113 @@
+{
+  "id": "omarchy-expose-g3o",
+  "title": "Ink cutaway looks: Factory, Cutaway and Doll's House, each as floors and as a street",
+  "beads": [
+    {
+      "id": "omarchy-expose-g3o.13",
+      "title": "Cutaway Street: hatching and street life are computed once, after the open motion, and ink in with the drawing",
+      "status": "in_progress"
+    },
+    {
+      "id": "omarchy-expose-g3o.12",
+      "title": "Cutaway Street: the workspace label and caption follow the Workspace names setting, and a long label elides in the middle",
+      "status": "closed"
+    },
+    {
+      "id": "omarchy-expose-g3o.10",
+      "title": "Cutaway Street: the plain street is built once per open, not once per size the surface passes through",
+      "status": "closed"
+    },
+    {
+      "id": "omarchy-expose-g3o.9",
+      "title": "profile-report: each open's GUI stall and the QML share of it; the QML ranking alone misses half an open's cost",
+      "status": "closed"
+    },
+    {
+      "id": "omarchy-expose-g3o.8",
+      "title": "tests: the settings runtime check passes when a page shows the wrong scope note or throws while evaluating",
+      "status": "open"
+    },
+    {
+      "id": "omarchy-expose-g3o.7",
+      "title": "README: the intro and gallery present the six ink cutaway looks",
+      "status": "open"
+    },
+    {
+      "id": "omarchy-expose-g3o.6",
+      "title": "Doll's House and Village: the homely style over both arrangements",
+      "status": "open"
+    },
+    {
+      "id": "omarchy-expose-g3o.5",
+      "title": "Factory and Factory Street: the machinery style over both arrangements",
+      "status": "open"
+    },
+    {
+      "id": "omarchy-expose-g3o.4",
+      "title": "Cutaway: the floors arrangement, one building with a floor per workspace",
+      "status": "open"
+    },
+    {
+      "id": "omarchy-expose-g3o.3",
+      "title": "Cutaway Street: section geometry, the street arrangement, the room card, and the first ink look",
+      "status": "open"
+    },
+    {
+      "id": "omarchy-expose-g3o.2",
+      "title": "WindowThumbnail: an opt-in ink treatment in its existing effect, checked on real pixels",
+      "status": "closed"
+    },
+    {
+      "id": "omarchy-expose-g3o.1",
+      "title": "Settings: the schema says which looks a setting applies to; the pages stop hand-writing it",
+      "status": "in_progress"
+    },
+    {
+      "id": "omarchy-expose-g3o.11",
+      "title": "Overview: measured go/no-go on keeping a look alive across opens; a hidden layer surface is a new window, and Shapes reprocess on a new window",
+      "status": "closed"
+    }
+  ],
+  "blocks": [
+    [
+      "omarchy-expose-g3o.9",
+      "omarchy-expose-g3o.10"
+    ],
+    [
+      "omarchy-expose-g3o.6",
+      "omarchy-expose-g3o.7"
+    ],
+    [
+      "omarchy-expose-g3o.5",
+      "omarchy-expose-g3o.7"
+    ],
+    [
+      "omarchy-expose-g3o.4",
+      "omarchy-expose-g3o.6"
+    ],
+    [
+      "omarchy-expose-g3o.4",
+      "omarchy-expose-g3o.5"
+    ],
+    [
+      "omarchy-expose-g3o.3",
+      "omarchy-expose-g3o.4"
+    ],
+    [
+      "omarchy-expose-g3o.2",
+      "omarchy-expose-g3o.3"
+    ],
+    [
+      "omarchy-expose-g3o.1",
+      "omarchy-expose-g3o.3"
+    ],
+    [
+      "omarchy-expose-g3o.10",
+      "omarchy-expose-g3o.11"
+    ],
+    [
+      "omarchy-expose-g3o.9",
+      "omarchy-expose-g3o.11"
+    ]
+  ]
+}

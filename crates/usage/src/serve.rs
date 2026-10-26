@@ -157,6 +157,7 @@ fn draw(shell: &mut Shell, state: &State, refresh: Refresh) -> Result<(), String
     let bead: BeadPage = view::bead_page(&state.work, shell.bead_pushed_at.elapsed());
     let shown: Page<'_> = match state.view {
         View::Bead => Page::Bead(&bead),
+        View::Graph => Page::Graph(state.epic.as_ref()),
         View::Usage => Page::Usage(&dashboard),
     };
     let menu: Option<MenuView> = match state.menu {

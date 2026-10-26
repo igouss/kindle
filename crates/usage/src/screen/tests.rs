@@ -426,3 +426,21 @@ fn a_rule_inside_a_quote_ends_at_the_text_edge() {
     let edge: u32 = MARGIN as u32 + bead::WIDTH;
     assert!(!(menu::HEADER..PAGE.height).any(|y: u32| inked(&canvas, edge + 2..edge + 30, y)));
 }
+
+#[test]
+fn a_real_epic_on_the_graph_tab_matches_the_golden_page() {
+    let epic: crate::bead::Epic =
+        serde_json::from_str(include_str!("../../golden/g3o-epic.json")).unwrap();
+    golden(
+        "graph.pgm",
+        &render(&Page::Graph(Some(&epic)), &faces(), PAGE, None),
+    );
+}
+
+#[test]
+fn before_any_epic_the_graph_tab_says_so() {
+    golden(
+        "no-epic.pgm",
+        &render(&Page::Graph(None), &faces(), PAGE, None),
+    );
+}
