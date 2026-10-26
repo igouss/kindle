@@ -89,7 +89,10 @@ pub fn run() -> Result<(), String> {
             }
             Inbound::Pushed(Message::Bead(feed), reply) => {
                 shell.bead_pushed_at = Instant::now();
-                (Event::BeadPushed(feed), Some(reply))
+                let pages: usize = feed.bead.as_ref().map_or(1, |bead: &crate::bead::Bead| {
+                    screen::pages(&shell.faces, &view::active_page(bead, feed.now, 0))
+                });
+                (Event::BeadPushed(feed, pages), Some(reply))
             }
         };
         let (next, effects): (State, Vec<Effect>) = app::step(state, event);

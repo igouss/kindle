@@ -10,6 +10,7 @@ edition = "2024"
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 eink = { path = "crates/eink" }
 fontdue = "0.9.5"
+franken_markdown = { git = "https://github.com/igouss/franken_markdown", rev = "4b705d147c10cebb52866f37dbdb1492ce8505ea", default-features = false }
 nix = { version = "0.31.3", default-features = false, features = ["ioctl"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

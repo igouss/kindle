@@ -1,8 +1,9 @@
 use eink::canvas::{Point, Rect};
 
-use crate::app::View;
+use crate::app::{Menu, View};
 
 pub const HEADER: u32 = 70;
+pub const BACK_EDGE: i32 = 1024 / 3;
 pub const BUTTON: Rect = Rect {
     left: 934,
     top: 0,
@@ -116,9 +117,16 @@ pub const TARGETS: [(Target, Rect); 7] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Back,
+    Forward,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hit {
     Button,
     Tab(View),
+    Page(Direction),
     Target(Target),
     Panel,
     Outside,
@@ -129,7 +137,7 @@ pub fn contains(rect: Rect, point: Point) -> bool {
         && (rect.top..rect.top + rect.height as i32).contains(&point.y)
 }
 
-pub fn hit(point: Point) -> Hit {
+pub fn hit(point: Point, menu: Menu) -> Hit {
     if contains(BUTTON, point) {
         return Hit::Button;
     }
@@ -139,13 +147,16 @@ pub fn hit(point: Point) -> Hit {
     {
         return Hit::Tab(view);
     }
-    match TARGETS
+    let target: Option<Target> = TARGETS
         .iter()
         .find(|(_, rect): &&(Target, Rect)| contains(*rect, point))
-    {
-        Some(&(target, _)) => Hit::Target(target),
-        None if contains(PANEL, point) => Hit::Panel,
-        None => Hit::Outside,
+        .map(|&(target, _): &(Target, Rect)| target);
+    match (menu, target) {
+        (Menu::Open, Some(target)) => Hit::Target(target),
+        (Menu::Open, None) if contains(PANEL, point) => Hit::Panel,
+        (Menu::Open | Menu::Closed, _) if point.y < HEADER as i32 => Hit::Outside,
+        (Menu::Open | Menu::Closed, _) if point.x < BACK_EDGE => Hit::Page(Direction::Back),
+        (Menu::Open | Menu::Closed, _) => Hit::Page(Direction::Forward),
     }
 }
 
@@ -164,7 +175,7 @@ mod tests {
     fn each_target_is_hit_at_its_centre() {
         let hits: Vec<Hit> = TARGETS
             .iter()
-            .map(|&(_, rect): &(Target, Rect)| hit(centre(rect)))
+            .map(|&(_, rect): &(Target, Rect)| hit(centre(rect), Menu::Open))
             .collect();
         let expected: Vec<Hit> = TARGETS
             .iter()
@@ -193,7 +204,10 @@ mod tests {
     #[test]
     fn the_top_right_corner_is_the_menu_button() {
         assert_eq!(
-            (hit(Point { x: 1023, y: 0 }), hit(Point { x: 934, y: 69 })),
+            (
+                hit(Point { x: 1023, y: 0 }, Menu::Closed),
+                hit(Point { x: 934, y: 69 }, Menu::Open),
+            ),
             (Hit::Button, Hit::Button)
         );
     }
@@ -204,11 +218,14 @@ mod tests {
             .iter()
             .map(|&(_, r): &(View, Rect)| {
                 (
-                    hit(Point { x: r.left, y: 0 }),
-                    hit(Point {
-                        x: r.left + r.width as i32 - 1,
-                        y: HEADER as i32 - 1,
-                    }),
+                    hit(Point { x: r.left, y: 0 }, Menu::Closed),
+                    hit(
+                        Point {
+                            x: r.left + r.width as i32 - 1,
+                            y: HEADER as i32 - 1,
+                        },
+                        Menu::Open,
+                    ),
                 )
             })
             .collect();
@@ -220,26 +237,75 @@ mod tests {
     }
 
     #[test]
-    fn below_the_header_or_between_tabs_is_no_tab() {
+    fn between_tabs_is_outside_and_below_the_header_turns_the_page() {
         let probes: [Hit; 3] = [
-            hit(Point {
-                x: 100,
-                y: HEADER as i32,
-            }),
-            hit(Point { x: 180, y: 30 }),
-            hit(Point { x: 600, y: 30 }),
+            hit(Point { x: 180, y: 30 }, Menu::Closed),
+            hit(Point { x: 600, y: 30 }, Menu::Closed),
+            hit(
+                Point {
+                    x: 100,
+                    y: HEADER as i32,
+                },
+                Menu::Closed,
+            ),
         ];
-        assert_eq!(probes, [Hit::Outside, Hit::Outside, Hit::Outside]);
+        assert_eq!(
+            probes,
+            [Hit::Outside, Hit::Outside, Hit::Page(Direction::Back)]
+        );
     }
 
     #[test]
-    fn the_gap_between_buttons_is_the_panel_and_beyond_it_is_outside() {
-        let probes: [Hit; 3] = [
-            hit(Point { x: 794, y: 200 }),
-            hit(Point { x: 600, y: 560 }),
-            hit(Point { x: 300, y: 400 }),
+    fn the_left_third_turns_back_and_the_rest_turns_forward() {
+        let probes: [Hit; 4] = [
+            hit(Point { x: 0, y: 400 }, Menu::Closed),
+            hit(
+                Point {
+                    x: BACK_EDGE - 1,
+                    y: 757,
+                },
+                Menu::Closed,
+            ),
+            hit(
+                Point {
+                    x: BACK_EDGE,
+                    y: 400,
+                },
+                Menu::Closed,
+            ),
+            hit(Point { x: 1023, y: 757 }, Menu::Closed),
         ];
-        assert_eq!(probes, [Hit::Panel, Hit::Panel, Hit::Outside]);
+        assert_eq!(
+            probes,
+            [
+                Hit::Page(Direction::Back),
+                Hit::Page(Direction::Back),
+                Hit::Page(Direction::Forward),
+                Hit::Page(Direction::Forward)
+            ]
+        );
+    }
+
+    #[test]
+    fn with_the_menu_closed_its_panel_area_turns_the_page() {
+        let probes: [Hit; 2] = [
+            hit(centre(TARGETS[0].1), Menu::Closed),
+            hit(Point { x: 794, y: 200 }, Menu::Closed),
+        ];
+        assert_eq!(
+            probes,
+            [Hit::Page(Direction::Forward), Hit::Page(Direction::Forward)]
+        );
+    }
+
+    #[test]
+    fn the_gap_between_buttons_is_the_panel_and_beyond_it_turns_the_page() {
+        let probes: [Hit; 3] = [
+            hit(Point { x: 794, y: 200 }, Menu::Open),
+            hit(Point { x: 600, y: 560 }, Menu::Open),
+            hit(Point { x: 300, y: 400 }, Menu::Open),
+        ];
+        assert_eq!(probes, [Hit::Panel, Hit::Panel, Hit::Page(Direction::Back)]);
     }
 
     #[test]

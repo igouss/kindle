@@ -97,19 +97,86 @@ fn a_full_dashboard_matches_the_golden_page() {
     );
 }
 
-#[test]
-fn an_active_bead_matches_the_golden_page() {
-    let page: BeadPage = BeadPage::Active {
+fn g3o(page: usize, description: &str) -> BeadPage {
+    BeadPage::Active {
         place: String::from("omarchy-panorama \u{b7} omarchy-expose-g3o.13"),
         title: String::from(
             "Cutaway Street: hatching and street life are computed once, after the open motion, and ink in with the drawing",
         ),
-        meta: String::from("P2 \u{b7} task \u{b7} elendal \u{b7} 42m"),
-    };
+        meta: String::from("P2 \u{b7} task \u{b7} elendal"),
+        description: description.to_owned(),
+        elapsed: String::from("42m"),
+        page,
+    }
+}
+
+const G3O: &str = include_str!("../../golden/g3o.md");
+
+#[test]
+fn the_first_page_of_a_long_bead_matches_the_golden_page() {
     golden(
         "bead.pgm",
-        &render(&Page::Bead(&page), &faces(), PAGE, None),
+        &render(&Page::Bead(&g3o(0, G3O)), &faces(), PAGE, None),
     );
+}
+
+#[test]
+fn a_middle_page_of_a_long_bead_matches_the_golden_page() {
+    golden(
+        "bead-3.pgm",
+        &render(&Page::Bead(&g3o(2, G3O)), &faces(), PAGE, None),
+    );
+}
+
+#[test]
+fn the_last_page_of_a_long_bead_matches_the_golden_page() {
+    golden(
+        "bead-6.pgm",
+        &render(&Page::Bead(&g3o(5, G3O)), &faces(), PAGE, None),
+    );
+}
+
+#[test]
+fn code_quotes_lists_tables_rules_and_long_words_match_the_golden_page() {
+    golden(
+        "mixed.pgm",
+        &render(
+            &Page::Bead(&g3o(0, include_str!("../../golden/mixed.md"))),
+            &faces(),
+            PAGE,
+            None,
+        ),
+    );
+}
+
+#[test]
+fn a_long_description_runs_to_many_pages_and_a_short_one_to_one() {
+    assert_eq!(
+        (
+            pages(&faces(), &g3o(0, G3O)),
+            pages(&faces(), &g3o(0, "One line.")),
+            pages(&faces(), &g3o(0, "")),
+            pages(&faces(), &BeadPage::Idle)
+        ),
+        (6, 1, 1, 1)
+    );
+}
+
+#[test]
+fn a_page_past_the_end_shows_the_last_page() {
+    let past: Canvas = render(&Page::Bead(&g3o(99, G3O)), &faces(), PAGE, None);
+    let last: Canvas = render(&Page::Bead(&g3o(6, G3O)), &faces(), PAGE, None);
+    assert!(past.pixels() == last.pixels());
+}
+
+#[test]
+fn one_page_has_no_scroll_bar_and_many_pages_do() {
+    let column = |canvas: &Canvas| -> bool {
+        (menu::HEADER + 14..PAGE.height - 14).any(|y: u32| inked(canvas, 990..1000, y))
+    };
+    let one: Canvas = render(&Page::Bead(&g3o(0, "One line.")), &faces(), PAGE, None);
+    let many: Canvas = render(&Page::Bead(&g3o(0, G3O)), &faces(), PAGE, None);
+    assert_eq!((column(&one), column(&many)), (false, true));
 }
 
 #[test]
@@ -351,4 +418,11 @@ fn a_meter_without_a_reset_prints_no_countdown() {
         .map(|y: u32| y + LIMIT_BLOCK as u32)
         .any(|y: u32| inked(&canvas, 0..512, y));
     assert_eq!((first, second), (false, true));
+}
+
+#[test]
+fn a_rule_inside_a_quote_ends_at_the_text_edge() {
+    let canvas: Canvas = render(&Page::Bead(&g3o(0, "> a\n>\n> ---")), &faces(), PAGE, None);
+    let edge: u32 = MARGIN as u32 + bead::WIDTH;
+    assert!(!(menu::HEADER..PAGE.height).any(|y: u32| inked(&canvas, edge + 2..edge + 30, y)));
 }

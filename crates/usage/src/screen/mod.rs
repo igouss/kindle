@@ -197,5 +197,28 @@ fn button(canvas: &mut Canvas, faces: &Faces, rect: Rect, label: &str, chosen: b
     );
 }
 
+pub fn pages(faces: &Faces, page: &BeadPage) -> usize {
+    match page {
+        BeadPage::Active {
+            place,
+            title,
+            meta,
+            description,
+            ..
+        } => bead::lay(
+            faces,
+            &crate::reader::Source {
+                place,
+                title,
+                meta,
+                description,
+            },
+        )
+        .pages
+        .len(),
+        BeadPage::Waiting | BeadPage::Idle => 1,
+    }
+}
+
 #[cfg(test)]
 mod tests;

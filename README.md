@@ -197,10 +197,21 @@ host/push-usage.sh --flash  # the same, with a full refresh that clears ghosting
 ### The bead being worked on
 
 The header is a tab strip: **Bead** and **Usage**, with ☰ at the right. Tapping a tab shows
-it; the usage dashboard is the Usage tab. The Bead tab shows the bead in progress on devbox
-(its project and id, title, priority, type, assignee, and how long it has been in progress),
-"Nothing in progress" when there is none, and "Waiting for devbox" until the first bead push
-since the dashboard started.
+it; the usage dashboard is the Usage tab. The Bead tab shows the bead in progress on devbox:
+its project and id, title, priority, type and assignee, then its description, rendered from
+Markdown by [franken_markdown](https://github.com/igouss/franken_markdown) (pinned to a
+commit of the fork in the workspace manifest). It says "Nothing in progress" when there is
+none, and "Waiting for devbox" until the first bead push since the dashboard started.
+
+The description reads like a book, a page at a time:
+
+- Tap the left third of the page to go back, the right two thirds to go forward.
+- When it runs past one page, a scroll bar at the right shows where you are, and the header
+  shows how long the bead has been in progress and the page, as in `42m · 3 of 6`.
+- A line never splits across pages, and a heading never ends one.
+- Page turns refresh quietly; every sixth turn flashes to clear e-ink ghosting.
+- The page count is worked out once per push, from the same layout that draws the page;
+  time lives in the header so the layout depends only on the bead.
 
 A bead push carries a snapshot, the bead as JSON or `null`:
 
@@ -215,7 +226,8 @@ ssh kindle /mnt/us/kindle-dev/usage bead --now "$(date --iso-8601=seconds)" < be
 
 - A bead with a new id opens the Bead tab at its first page and closes the menu, with a full
   flash; the same id pushed again replaces what was known of it and keeps the reading
-  position; `null` leaves the tab where it is.
+  position (or the last page, if the description got shorter); `null` leaves the tab where
+  it is.
 - A push redraws only the tab it changes, if that tab is showing.
 - `started` and `--now` must be RFC 3339; a snapshot that is not a bead or `null` is refused
   before it reaches the socket.

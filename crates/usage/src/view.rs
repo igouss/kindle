@@ -47,6 +47,9 @@ pub enum BeadPage {
         place: String,
         title: String,
         meta: String,
+        description: String,
+        elapsed: String,
+        page: usize,
     },
 }
 
@@ -54,23 +57,27 @@ pub fn bead_page(work: &Work, since_push: Duration) -> BeadPage {
     match work {
         Work::Unknown => BeadPage::Waiting,
         Work::Idle { .. } => BeadPage::Idle,
-        Work::Active { bead, now, .. } => {
+        Work::Active {
+            bead, now, page, ..
+        } => {
             let at: DateTime<FixedOffset> =
                 *now + chrono::TimeDelta::from_std(since_push).unwrap_or(chrono::TimeDelta::MAX);
-            BeadPage::Active {
-                place: format!("{} \u{b7} {}", bead.project, bead.id),
-                title: bead.title.clone(),
-                meta: meta(bead, (at - bead.started).to_std().unwrap_or(Duration::ZERO)),
-            }
+            active_page(bead, at, *page)
         }
     }
 }
 
-fn meta(bead: &Bead, elapsed: Duration) -> String {
-    let mut parts: Vec<String> = vec![format!("P{}", bead.priority), bead.issue_type.clone()];
-    parts.extend(bead.assignee.clone());
-    parts.push(format_duration(elapsed));
-    parts.join(" \u{b7} ")
+pub fn active_page(bead: &Bead, at: DateTime<FixedOffset>, page: usize) -> BeadPage {
+    let mut meta: Vec<String> = vec![format!("P{}", bead.priority), bead.issue_type.clone()];
+    meta.extend(bead.assignee.clone());
+    BeadPage::Active {
+        place: format!("{} \u{b7} {}", bead.project, bead.id),
+        title: bead.title.clone(),
+        meta: meta.join(" \u{b7} "),
+        description: bead.description.clone(),
+        elapsed: format_duration((at - bead.started).to_std().unwrap_or(Duration::ZERO)),
+        page,
+    }
 }
 
 pub fn waiting() -> Dashboard {
@@ -281,7 +288,7 @@ mod tests {
 
     const NOW: &str = "2026-10-25T19:41:30-04:00";
 
-    fn working(assignee: Option<&str>) -> Work {
+    fn working(assignee: Option<&str>, page: usize) -> Work {
         Work::Active {
             bead: Bead {
                 project: String::from("kindle"),
@@ -291,35 +298,39 @@ mod tests {
                 issue_type: String::from("task"),
                 assignee: assignee.map(str::to_owned),
                 started: at("2026-10-26T09:00:00-04:00"),
-                description: String::new(),
+                description: String::from("## What"),
             },
             now: at("2026-10-26T09:42:00-04:00"),
-            page: 0,
+            page,
+            pages: 4,
+            quiet: 0,
+        }
+    }
+
+    fn active(meta: &str, elapsed: &str, page: usize) -> BeadPage {
+        BeadPage::Active {
+            place: String::from("kindle \u{b7} kindle-bxx.4"),
+            title: String::from("bead push"),
+            meta: meta.to_owned(),
+            description: String::from("## What"),
+            elapsed: elapsed.to_owned(),
+            page,
         }
     }
 
     #[test]
-    fn an_active_bead_shows_where_it_is_its_title_and_its_metadata() {
+    fn an_active_bead_shows_where_it_is_its_title_metadata_text_and_page() {
         assert_eq!(
-            bead_page(&working(Some("elendal")), Duration::ZERO),
-            BeadPage::Active {
-                place: String::from("kindle \u{b7} kindle-bxx.4"),
-                title: String::from("bead push"),
-                meta: String::from("P1 \u{b7} task \u{b7} elendal \u{b7} 42m"),
-            }
+            bead_page(&working(Some("elendal"), 2), Duration::ZERO),
+            active("P1 \u{b7} task \u{b7} elendal", "42m", 2)
         );
     }
 
     #[test]
     fn an_unassigned_bead_leaves_the_assignee_out_and_elapsed_time_runs_on() {
-        let page: BeadPage = bead_page(&working(None), Duration::from_secs(3600));
         assert_eq!(
-            page,
-            BeadPage::Active {
-                place: String::from("kindle \u{b7} kindle-bxx.4"),
-                title: String::from("bead push"),
-                meta: String::from("P1 \u{b7} task \u{b7} 1h 42m"),
-            }
+            bead_page(&working(None, 0), Duration::from_secs(3600)),
+            active("P1 \u{b7} task", "1h 42m", 0)
         );
     }
 
@@ -339,21 +350,13 @@ mod tests {
 
     #[test]
     fn a_start_after_the_pushed_clock_shows_the_shortest_elapsed_time() {
-        let early: Work = match working(None) {
-            Work::Active { bead, page, .. } => Work::Active {
-                bead,
-                now: at("2026-10-26T08:00:00-04:00"),
-                page,
-            },
-            other @ (Work::Unknown | Work::Idle { .. }) => other,
+        let bead: Bead = match working(None, 0) {
+            Work::Active { bead, .. } => bead,
+            Work::Unknown | Work::Idle { .. } => unreachable!(),
         };
         assert_eq!(
-            bead_page(&early, Duration::ZERO),
-            BeadPage::Active {
-                place: String::from("kindle \u{b7} kindle-bxx.4"),
-                title: String::from("bead push"),
-                meta: String::from("P1 \u{b7} task \u{b7} 1m"),
-            }
+            active_page(&bead, at("2026-10-26T08:00:00-04:00"), 0),
+            active("P1 \u{b7} task", "1m", 0)
         );
     }
 

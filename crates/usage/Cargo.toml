@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 chrono.workspace = true
 eink.workspace = true
+franken_markdown.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

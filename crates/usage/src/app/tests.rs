@@ -279,20 +279,46 @@ fn bead(id: &str) -> Bead {
     }
 }
 
+const PAGES: usize = 5;
+
 fn sighting(bead: Option<Bead>) -> Event {
-    Event::BeadPushed(BeadFeed {
-        bead,
-        now: at("2026-10-26T09:30:00-04:00"),
-    })
+    Event::BeadPushed(
+        BeadFeed {
+            bead,
+            now: at("2026-10-26T09:30:00-04:00"),
+        },
+        PAGES,
+    )
 }
 
 fn active(id: &str, page: usize) -> Work {
+    reading(id, page, PAGES, 0)
+}
+
+fn reading(id: &str, page: usize, pages: usize, quiet: u32) -> Work {
     Work::Active {
         bead: bead(id),
         now: at("2026-10-26T09:30:00-04:00"),
         page,
+        pages,
+        quiet,
     }
 }
+
+fn on_bead(work: Work) -> State {
+    State {
+        view: View::Bead,
+        work,
+        ..state(Menu::Closed, 12, true)
+    }
+}
+
+fn tap_at(x: i32) -> Event {
+    Event::Tap(Point { x, y: 400 })
+}
+
+const BACK: i32 = 10;
+const FORWARD: i32 = 900;
 
 fn on_tab(view: View) -> Event {
     let rect: Rect = menu::TABS
@@ -361,17 +387,140 @@ fn the_same_bead_again_replaces_what_was_known_of_it() {
         title: String::from("a new title"),
         ..bead("a")
     };
-    let later: Event = Event::BeadPushed(BeadFeed {
-        bead: Some(edited.clone()),
-        now: at("2026-10-26T10:00:00-04:00"),
-    });
+    let later: Event = Event::BeadPushed(
+        BeadFeed {
+            bead: Some(edited.clone()),
+            now: at("2026-10-26T10:00:00-04:00"),
+        },
+        PAGES,
+    );
     assert_eq!(
         step(reading, later).0.work,
         Work::Active {
             bead: edited,
             now: at("2026-10-26T10:00:00-04:00"),
-            page: 3
+            page: 3,
+            pages: PAGES,
+            quiet: 0
         }
+    );
+}
+
+#[test]
+fn a_shorter_description_keeps_the_reader_on_its_last_page() {
+    let shorter: Event = Event::BeadPushed(
+        BeadFeed {
+            bead: Some(bead("a")),
+            now: at("2026-10-26T09:30:00-04:00"),
+        },
+        2,
+    );
+    assert_eq!(
+        step(on_bead(reading("a", 4, PAGES, 0)), shorter).0.work,
+        reading("a", 1, 2, 0)
+    );
+}
+
+#[test]
+fn a_bead_with_no_pages_counts_as_one() {
+    let empty: Event = Event::BeadPushed(
+        BeadFeed {
+            bead: Some(bead("a")),
+            now: at("2026-10-26T09:30:00-04:00"),
+        },
+        0,
+    );
+    let (opened, _): (State, Vec<Effect>) = step(state(Menu::Closed, 12, true), empty);
+    let (turned, effects): (State, Vec<Effect>) = step(opened, tap_at(FORWARD));
+    assert_eq!((turned.work, effects), (reading("a", 0, 1, 0), vec![]));
+}
+
+#[test]
+fn forward_and_back_turn_one_page_quietly() {
+    let (forward, forward_effects): (State, Vec<Effect>) =
+        step(on_bead(reading("a", 2, PAGES, 0)), tap_at(FORWARD));
+    let (back, back_effects): (State, Vec<Effect>) =
+        step(on_bead(reading("a", 2, PAGES, 0)), tap_at(BACK));
+    assert_eq!(
+        (forward.work, forward_effects, back.work, back_effects),
+        (
+            reading("a", 3, PAGES, 1),
+            vec![Effect::Draw(Refresh::Quiet)],
+            reading("a", 1, PAGES, 1),
+            vec![Effect::Draw(Refresh::Quiet)]
+        )
+    );
+}
+
+#[test]
+fn the_first_and_last_pages_stop_the_turn_and_count_nothing() {
+    let first: (State, Vec<Effect>) = step(on_bead(reading("a", 0, PAGES, 2)), tap_at(BACK));
+    let last: (State, Vec<Effect>) =
+        step(on_bead(reading("a", PAGES - 1, PAGES, 2)), tap_at(FORWARD));
+    assert_eq!(
+        (first, last),
+        (
+            (on_bead(reading("a", 0, PAGES, 2)), vec![]),
+            (on_bead(reading("a", PAGES - 1, PAGES, 2)), vec![])
+        )
+    );
+}
+
+#[test]
+fn every_sixth_turn_flashes_and_starts_counting_again() {
+    let (fifth, fifth_effects): (State, Vec<Effect>) = step(
+        on_bead(reading("a", 1, PAGES, FLASH_EVERY - 2)),
+        tap_at(FORWARD),
+    );
+    let (sixth, sixth_effects): (State, Vec<Effect>) = step(fifth, tap_at(FORWARD));
+    assert_eq!(
+        (fifth_effects, sixth.work, sixth_effects),
+        (
+            vec![Effect::Draw(Refresh::Quiet)],
+            reading("a", 3, PAGES, 0),
+            vec![Effect::Draw(Refresh::Flash)]
+        )
+    );
+}
+
+#[test]
+fn page_taps_do_nothing_on_the_usage_tab_or_without_a_bead() {
+    let usage: State = State {
+        view: View::Usage,
+        work: active("a", 2),
+        ..state(Menu::Closed, 12, true)
+    };
+    let idle: State = on_bead(Work::Idle {
+        now: at("2026-10-26T09:30:00-04:00"),
+    });
+    let expected_usage: State = State {
+        view: View::Usage,
+        work: active("a", 2),
+        ..state(Menu::Closed, 12, true)
+    };
+    assert_eq!(
+        (step(usage, tap_at(FORWARD)), step(idle, tap_at(BACK))),
+        (
+            (expected_usage, vec![]),
+            (
+                on_bead(Work::Idle {
+                    now: at("2026-10-26T09:30:00-04:00")
+                }),
+                vec![]
+            )
+        )
+    );
+}
+
+#[test]
+fn with_the_menu_open_a_page_tap_only_closes_the_menu() {
+    let open: State = State {
+        menu: Menu::Open,
+        ..on_bead(active("a", 2))
+    };
+    assert_eq!(
+        step(open, tap_at(BACK)),
+        (on_bead(active("a", 2)), vec![Effect::Draw(Refresh::Quiet)])
     );
 }
 

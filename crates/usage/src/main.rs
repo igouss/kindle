@@ -2,6 +2,7 @@ mod app;
 mod bead;
 mod menu;
 mod message;
+mod reader;
 mod record;
 mod screen;
 mod serve;

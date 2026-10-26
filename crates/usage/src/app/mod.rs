@@ -5,12 +5,13 @@ use eink::canvas::{Point, Port};
 use eink::epdc::Refresh;
 
 use crate::bead::Bead;
-use crate::menu::{self, Hit, Target};
+use crate::menu::{self, Direction, Hit, Target};
 use crate::record::Record;
 use crate::settings::Settings;
 
 pub const LIGHT_STEP: u32 = 3;
 pub const DEFAULT_LEVEL: u32 = 12;
+pub const FLASH_EVERY: u32 = 6;
 
 #[derive(Debug, PartialEq)]
 pub struct Feed {
@@ -40,6 +41,8 @@ pub enum Work {
         bead: Bead,
         now: DateTime<FixedOffset>,
         page: usize,
+        pages: usize,
+        quiet: u32,
     },
 }
 
@@ -104,7 +107,7 @@ pub struct State {
 pub enum Event {
     Tap(Point),
     Pushed(Feed, Refresh),
-    BeadPushed(BeadFeed),
+    BeadPushed(BeadFeed, usize),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,8 +138,11 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
                 effects,
             )
         }
-        Event::BeadPushed(feed) => sighted(state, feed),
-        Event::Tap(point) => tap(state, menu::hit(point)),
+        Event::BeadPushed(feed, pages) => sighted(state, feed, pages.max(1)),
+        Event::Tap(point) => {
+            let hit: Hit = menu::hit(point, state.menu);
+            tap(state, hit)
+        }
     }
 }
 
@@ -148,28 +154,43 @@ fn shown(state: &State, view: View, refresh: Refresh) -> Vec<Effect> {
     }
 }
 
-fn sighted(state: State, feed: BeadFeed) -> (State, Vec<Effect>) {
+fn sighted(state: State, feed: BeadFeed, pages: usize) -> (State, Vec<Effect>) {
     let BeadFeed { bead, now } = feed;
-    let kept: Option<usize> = match (&state.work, &bead) {
+    let kept: Option<(usize, u32)> = match (&state.work, &bead) {
         (
             Work::Active {
-                bead: was, page, ..
+                bead: was,
+                page,
+                quiet,
+                ..
             },
             Some(is),
-        ) if was.id == is.id => Some(*page),
+        ) if was.id == is.id => Some((*page, *quiet)),
         (Work::Active { .. } | Work::Idle { .. } | Work::Unknown, _) => None,
     };
     match (bead, kept) {
-        (Some(bead), Some(page)) => {
+        (Some(bead), Some((page, quiet))) => {
             let effects: Vec<Effect> = shown(&state, View::Bead, Refresh::Quiet);
-            let work: Work = Work::Active { bead, now, page };
+            let work: Work = Work::Active {
+                bead,
+                now,
+                page: page.min(pages - 1),
+                pages,
+                quiet,
+            };
             (State { work, ..state }, effects)
         }
         (Some(bead), None) => (
             State {
                 view: View::Bead,
                 menu: Menu::Closed,
-                work: Work::Active { bead, now, page: 0 },
+                work: Work::Active {
+                    bead,
+                    now,
+                    page: 0,
+                    pages,
+                    quiet: 0,
+                },
                 ..state
             },
             vec![Effect::Draw(Refresh::Flash)],
@@ -201,8 +222,12 @@ fn tap(state: State, hit: Hit) -> (State, Vec<Effect>) {
         (Menu::Closed, Hit::Tab(view)) => {
             (State { view, ..state }, vec![Effect::Draw(Refresh::Flash)])
         }
+        (Menu::Closed, Hit::Page(direction)) => leaf(state, direction),
         (Menu::Closed, Hit::Target(_) | Hit::Panel | Hit::Outside) => (state, vec![]),
-        (Menu::Open, Hit::Button | Hit::Tab(_) | Hit::Outside | Hit::Target(Target::Close)) => (
+        (
+            Menu::Open,
+            Hit::Button | Hit::Tab(_) | Hit::Page(_) | Hit::Outside | Hit::Target(Target::Close),
+        ) => (
             State {
                 menu: Menu::Closed,
                 ..state
@@ -221,6 +246,44 @@ fn tap(state: State, hit: Hit) -> (State, Vec<Effect>) {
                 ..state.light
             };
             light(state, switched)
+        }
+    }
+}
+
+fn leaf(state: State, direction: Direction) -> (State, Vec<Effect>) {
+    let State { work, view, .. } = state;
+    match (view, work) {
+        (
+            View::Bead,
+            Work::Active {
+                bead,
+                now,
+                page,
+                pages,
+                quiet,
+            },
+        ) => {
+            let next: usize = match direction {
+                Direction::Back => page.saturating_sub(1),
+                Direction::Forward => (page + 1).min(pages - 1),
+            };
+            let (quiet, effects): (u32, Vec<Effect>) = match (next == page, quiet + 1) {
+                (true, _) => (quiet, vec![]),
+                (false, turned) if turned >= FLASH_EVERY => (0, vec![Effect::Draw(Refresh::Flash)]),
+                (false, turned) => (turned, vec![Effect::Draw(Refresh::Quiet)]),
+            };
+            let work: Work = Work::Active {
+                bead,
+                now,
+                page: next,
+                pages,
+                quiet,
+            };
+            (State { work, ..state }, effects)
+        }
+        (View::Bead, work @ (Work::Unknown | Work::Idle { .. }))
+        | (View::Usage, work @ (Work::Unknown | Work::Idle { .. } | Work::Active { .. })) => {
+            (State { work, ..state }, vec![])
         }
     }
 }
