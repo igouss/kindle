@@ -18,6 +18,7 @@ use crate::view::{self, Dashboard};
 pub const SOCKET: &str = "/var/run/usage.sock";
 const TOUCH: &str = "/dev/input/event1";
 const SETTINGS: &str = "/mnt/us/kindle-dev/usage.settings";
+const HANDED_BACK: &str = "/var/run/dashboard.off";
 const QUIET: Duration = Duration::from_millis(400);
 
 enum Inbound {
@@ -85,29 +86,53 @@ pub fn run() -> Result<(), String> {
         };
         let (next, effects): (State, Vec<Effect>) = app::step(state, event);
         state = next;
-        let outcome: Result<(), String> = apply(&mut shell, &state, &effects);
+        let outcome: Result<Flow, String> = apply(&mut shell, &state, &effects);
         debounce.hold(since_epoch() + QUIET);
         if let Some(reply) = reply {
             let line: String = match &outcome {
-                Ok(()) => format!("ok {}", app::summary(&state)),
+                Ok(_) => format!("ok {}", app::summary(&state)),
                 Err(fault) => format!("error {fault}"),
             };
             let _ = reply.send(line);
         }
-        outcome?;
+        if outcome? == Flow::Leave {
+            return hand_back();
+        }
     }
     Err(String::from("every input closed"))
 }
 
-fn apply(shell: &mut Shell, state: &State, effects: &[Effect]) -> Result<(), String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Flow {
+    Stay,
+    Leave,
+}
+
+fn hand_back() -> Result<(), String> {
+    std::fs::write(HANDED_BACK, "").map_err(|e: std::io::Error| format!("{HANDED_BACK}: {e}"))?;
+    set_powerd("preventScreenSaver", 0)?;
+    let status: std::process::ExitStatus =
+        Command::new("/sbin/start")
+            .arg("lab126_gui")
+            .status()
+            .map_err(|e: std::io::Error| format!("start lab126_gui: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("start lab126_gui: {status}"))
+    }
+}
+
+fn apply(shell: &mut Shell, state: &State, effects: &[Effect]) -> Result<Flow, String> {
     for effect in effects {
         match *effect {
             Effect::Light(intensity) => set_powerd("flIntensity", intensity)?,
             Effect::Save => save(state)?,
             Effect::Draw(refresh) => draw(shell, state, refresh)?,
+            Effect::Exit => return Ok(Flow::Leave),
         }
     }
-    Ok(())
+    Ok(Flow::Stay)
 }
 
 fn draw(shell: &mut Shell, state: &State, refresh: Refresh) -> Result<(), String> {

@@ -83,6 +83,7 @@ pub enum Effect {
     Draw(Refresh),
     Light(u32),
     Save,
+    Exit,
 }
 
 pub fn summary(state: &State) -> String {
@@ -125,6 +126,7 @@ fn tap(state: State, hit: Hit) -> (State, Vec<Effect>) {
             vec![Effect::Draw(Refresh::Quiet)],
         ),
         (Mode::Menu, Hit::Panel) => (state, vec![]),
+        (Mode::Menu, Hit::Target(Target::KindleUi)) => (state, vec![Effect::Exit]),
         (Mode::Menu, Hit::Target(Target::PortLeft)) => turn(state, Port::Left),
         (Mode::Menu, Hit::Target(Target::PortRight)) => turn(state, Port::Right),
         (Mode::Menu, Hit::Target(Target::Dimmer)) => light(state, current.stepped(false)),
@@ -425,6 +427,14 @@ mod tests {
                 String::from("drawn, USB left, light 0"),
                 String::from("drawn, USB right, light 12")
             )
+        );
+    }
+
+    #[test]
+    fn exit_to_kindle_leaves_and_nothing_else() {
+        assert_eq!(
+            step(state(Mode::Menu, 12, true), on(Target::KindleUi)),
+            (state(Mode::Menu, 12, true), vec![Effect::Exit])
         );
     }
 }

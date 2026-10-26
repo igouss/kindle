@@ -94,7 +94,7 @@ The Kindle needs a default route through the PC and DNS resolvers.
 `1.1.1.1` and `8.8.8.8`). Install it once:
 
 ```sh
-host/install-uplink.sh
+host/install-job.sh kindle-uplink   # copies kindle/upstart/kindle-uplink.conf to /etc/upstart/
 ```
 
 All the scripts reach the Kindle as `ssh kindle`, so add a host entry:
@@ -153,6 +153,7 @@ right opens a menu:
   software (`Canvas::upright` in `eink`) before it reaches the portrait framebuffer.
 - **Light**: −, + (steps of 3 on powerd's 0–25 scale) and Off/On, which remembers the
   level.
+- **Exit to Kindle**: gives the screen back to the Kindle's own UI until the next reboot.
 
 Both choices are saved in `/mnt/us/kindle-dev/usage.settings` and survive restarts.
 
@@ -182,6 +183,40 @@ deep sleep and raises no interrupt at all (measured: its IRQ count did not move 
 several taps). Dashboard mode therefore stops the Kindle's own UI (`stop lab126_gui`) and
 keeps the screensaver off (`lipc-set-prop com.lab126.powerd preventScreenSaver 1`). The
 power button then changes nothing; powerd stays `Active`.
+
+### Dashboard mode at boot
+
+`kindle/upstart/dashboard.conf` makes the dashboard replace the Kindle UI at every boot:
+
+```sh
+cargo build --release --target armv7-unknown-linux-musleabi -p usage
+scp target/armv7-unknown-linux-musleabi/release/usage kindle:/mnt/us/kindle-dev/usage
+host/install-job.sh dashboard
+ssh kindle touch /mnt/us/kindle-dev/dashboard.on
+```
+
+When the Kindle UI's `framework` starts, the job:
+
+1. does nothing unless `/mnt/us/kindle-dev/dashboard.on` exists, and nothing if *Exit to
+   Kindle* was chosen since boot (`/var/run/dashboard.off`, cleared at every boot);
+2. waits up to 60 s for the SSH server (dropbear) and leaves the Kindle UI alone if it never
+   comes up, so the device stays reachable;
+3. stops the Kindle UI, turns the screensaver off and runs `usage serve`, restarting it if
+   it crashes. A clean exit (*Exit to Kindle*) ends it for this boot.
+
+### Getting the Kindle UI back
+
+From the quickest to the most thorough:
+
+| How | Lasts |
+|---|---|
+| Tap ☰, then **Exit to Kindle** | until the next reboot |
+| `ssh kindle 'touch /var/run/dashboard.off; /sbin/stop dashboard; lipc-set-prop com.lab126.powerd preventScreenSaver 0; /sbin/start lab126_gui'` | until the next reboot |
+| `ssh kindle rm /mnt/us/kindle-dev/dashboard.on`, then reboot (or *Exit to Kindle*, then delete `kindle-dev/dashboard.on` in USB drive mode) | for good |
+| `ssh kindle 'mntroot rw; rm /etc/upstart/dashboard.conf; mntroot ro'` | for good; removes the job |
+
+Rebooting alone does not help while the marker exists: the dashboard comes back. Holding
+the power button for about 40 seconds forces a reboot if the device ever stops responding.
 
 ## Drawing on the panel
 

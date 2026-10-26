@@ -206,6 +206,7 @@ fn panel(canvas: &mut Canvas, view: MenuView, faces: &Faces) {
             Target::LightSwitch => (if view.light.on { "Off" } else { "On" }, false),
             Target::Brighter => ("+", false),
             Target::Close => ("Close", false),
+            Target::KindleUi => ("Exit to Kindle", false),
         };
         button(canvas, faces, rect, label, chosen);
     }

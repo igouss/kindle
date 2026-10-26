@@ -10,7 +10,7 @@ pub const PANEL: Rect = Rect {
     left: 594,
     top: 120,
     width: 400,
-    height: 370,
+    height: 450,
 };
 pub const ORIENTATION_BASELINE: i32 = 160;
 pub const LIGHT_BASELINE: i32 = 295;
@@ -23,9 +23,10 @@ pub enum Target {
     LightSwitch,
     Brighter,
     Close,
+    KindleUi,
 }
 
-pub const TARGETS: [(Target, Rect); 6] = [
+pub const TARGETS: [(Target, Rect); 7] = [
     (
         Target::PortLeft,
         Rect {
@@ -76,6 +77,15 @@ pub const TARGETS: [(Target, Rect); 6] = [
         Rect {
             left: 614,
             top: 400,
+            width: 360,
+            height: 70,
+        },
+    ),
+    (
+        Target::KindleUi,
+        Rect {
+            left: 614,
+            top: 480,
             width: 360,
             height: 70,
         },
@@ -162,7 +172,7 @@ mod tests {
     fn the_gap_between_buttons_is_the_panel_and_beyond_it_is_outside() {
         let probes: [Hit; 3] = [
             hit(Point { x: 794, y: 200 }),
-            hit(Point { x: 600, y: 480 }),
+            hit(Point { x: 600, y: 560 }),
             hit(Point { x: 300, y: 400 }),
         ];
         assert_eq!(probes, [Hit::Panel, Hit::Panel, Hit::Outside]);
