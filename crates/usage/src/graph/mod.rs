@@ -10,7 +10,7 @@ use paint::{Label, Painter};
 
 const LINE_CHARS: usize = 14;
 const TITLE_LINES: usize = 2;
-const SHADES: &str = "  classDef closed fill:#eeeeee,stroke:#999999,color:#777777\n  classDef active fill:#000000,stroke:#000000,color:#ffffff\n  classDef ready fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000\n  classDef waiting fill:#ffffff,stroke:#555555,color:#333333\n";
+const SHADES: &str = "  classDef closed fill:#cccccc,stroke:#444444,color:#000000\n  classDef active fill:#000000,stroke:#000000,color:#ffffff\n  classDef ready fill:#ffffff,stroke:#000000,stroke-width:4px,color:#000000\n  classDef waiting fill:#ffffff,stroke:#555555,color:#333333\n";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shade {
