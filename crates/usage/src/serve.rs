@@ -9,11 +9,11 @@ use eink::canvas::{Canvas, Geometry, Port};
 use eink::epdc::{Epdc, Refresh};
 use eink::touch::{Debounce, EVENT_SIZE, Frames, TouchDown, parse};
 
-use crate::app::{self, Effect, Event, Feed, Light, Menu, State};
+use crate::app::{self, Effect, Event, Light, Menu, State, View, Work};
 use crate::message::{self, Message};
-use crate::screen::{self, Faces, MenuView};
+use crate::screen::{self, Faces, MenuView, Page};
 use crate::settings::{self, Settings};
-use crate::view::{self, Dashboard};
+use crate::view::{self, BeadPage, Dashboard};
 
 pub const SOCKET: &str = "/var/run/usage.sock";
 const TOUCH: &str = "/dev/input/event1";
@@ -23,7 +23,7 @@ const QUIET: Duration = Duration::from_millis(400);
 
 enum Inbound {
     Touch(TouchDown),
-    Pushed(Feed, Refresh, Sender<String>),
+    Pushed(Message, Sender<String>),
     Broken(String),
 }
 
@@ -32,6 +32,7 @@ struct Shell {
     faces: Faces,
     marker: u32,
     pushed_at: Instant,
+    bead_pushed_at: Instant,
 }
 
 pub fn run() -> Result<(), String> {
@@ -45,10 +46,12 @@ pub fn run() -> Result<(), String> {
     let current: u32 = powerd("flIntensity")?;
     let light: Light = app::initial_light(saved, current, max);
     let mut state: State = State {
+        view: View::Usage,
         menu: Menu::Closed,
         port: saved.port.unwrap_or(Port::Right),
         light,
         feed: None,
+        work: Work::Unknown,
     };
     let (sender, inbox): (Sender<Inbound>, Receiver<Inbound>) = mpsc::channel();
     spawn_touch(sender.clone());
@@ -59,6 +62,7 @@ pub fn run() -> Result<(), String> {
         faces,
         marker: 1,
         pushed_at: Instant::now(),
+        bead_pushed_at: Instant::now(),
     };
     let mut debounce: Debounce = Debounce::new(QUIET);
     apply(
@@ -79,9 +83,13 @@ pub fn run() -> Result<(), String> {
                 let page: Geometry = shell.epdc.geometry().landscape();
                 (Event::Tap(state.port.to_page(touch.at, page)), None)
             }
-            Inbound::Pushed(feed, refresh, reply) => {
+            Inbound::Pushed(Message::Usage(feed, refresh), reply) => {
                 shell.pushed_at = Instant::now();
                 (Event::Pushed(feed, refresh), Some(reply))
+            }
+            Inbound::Pushed(Message::Bead(feed), reply) => {
+                shell.bead_pushed_at = Instant::now();
+                (Event::BeadPushed(feed), Some(reply))
             }
         };
         let (next, effects): (State, Vec<Effect>) = app::step(state, event);
@@ -136,9 +144,14 @@ fn apply(shell: &mut Shell, state: &State, effects: &[Effect]) -> Result<Flow, S
 }
 
 fn draw(shell: &mut Shell, state: &State, refresh: Refresh) -> Result<(), String> {
-    let view: Dashboard = match &state.feed {
+    let dashboard: Dashboard = match &state.feed {
         Some(feed) => view::dashboard(&feed.record, feed.now_after(shell.pushed_at.elapsed())),
         None => view::waiting(),
+    };
+    let bead: BeadPage = view::bead_page(&state.work, shell.bead_pushed_at.elapsed());
+    let shown: Page<'_> = match state.view {
+        View::Bead => Page::Bead(&bead),
+        View::Usage => Page::Usage(&dashboard),
     };
     let menu: Option<MenuView> = match state.menu {
         Menu::Open => Some(MenuView {
@@ -148,7 +161,7 @@ fn draw(shell: &mut Shell, state: &State, refresh: Refresh) -> Result<(), String
         Menu::Closed => None,
     };
     let panel: Geometry = shell.epdc.geometry();
-    let page: Canvas = screen::render(&view, &shell.faces, panel.landscape(), menu);
+    let page: Canvas = screen::render(&shown, &shell.faces, panel.landscape(), menu);
     let canvas: Canvas = page.upright(state.port, panel.stride);
     shell.marker = shell.marker.wrapping_add(1).max(1);
     shell
@@ -238,10 +251,10 @@ fn serve_push(mut stream: UnixStream, sender: &Sender<Inbound>) -> Result<(), ()
         Err(e) => format!("error reading push: {e}"),
         Ok(_) => match message::decode(&text) {
             Err(fault) => format!("error {fault}"),
-            Ok(Message::Usage(feed, refresh)) => {
+            Ok(message) => {
                 let (reply, answer): (Sender<String>, Receiver<String>) = mpsc::channel();
                 sender
-                    .send(Inbound::Pushed(feed, refresh, reply))
+                    .send(Inbound::Pushed(message, reply))
                     .map_err(|_| ())?;
                 answer
                     .recv()

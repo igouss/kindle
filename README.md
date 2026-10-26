@@ -194,6 +194,32 @@ host/push-usage.sh --flash  # the same, with a full refresh that clears ghosting
 - A systemd user timer runs the push every 5 minutes. Refreshes are quiet except in the
   first five minutes of each hour, when a full flash clears e-ink ghosting.
 
+### The bead being worked on
+
+The header is a tab strip: **Bead** and **Usage**, with ☰ at the right. Tapping a tab shows
+it; the usage dashboard is the Usage tab. The Bead tab shows the bead in progress on devbox
+(its project and id, title, priority, type, assignee, and how long it has been in progress),
+"Nothing in progress" when there is none, and "Waiting for devbox" until the first bead push
+since the dashboard started.
+
+A bead push carries a snapshot, the bead as JSON or `null`:
+
+```sh
+ssh kindle /mnt/us/kindle-dev/usage bead --now "$(date --iso-8601=seconds)" < bead.json
+```
+
+```json
+{"project":"kindle","id":"kindle-bxx.4","title":"…","priority":1,"issue_type":"task",
+ "assignee":"elendal","started":"2026-10-26T09:00:00-04:00","description":"markdown"}
+```
+
+- A bead with a new id opens the Bead tab at its first page and closes the menu, with a full
+  flash; the same id pushed again replaces what was known of it and keeps the reading
+  position; `null` leaves the tab where it is.
+- A push redraws only the tab it changes, if that tab is showing.
+- `started` and `--now` must be RFC 3339; a snapshot that is not a bead or `null` is refused
+  before it reaches the socket.
+
 Touch only works while the Kindle is awake: in its screensaver the touch controller is in
 deep sleep and raises no interrupt at all (measured: its IRQ count did not move through
 several taps). Dashboard mode therefore stops the Kindle's own UI (`stop lab126_gui`) and

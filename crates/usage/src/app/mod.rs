@@ -4,6 +4,7 @@ use chrono::{DateTime, FixedOffset, TimeDelta};
 use eink::canvas::{Point, Port};
 use eink::epdc::Refresh;
 
+use crate::bead::Bead;
 use crate::menu::{self, Hit, Target};
 use crate::record::Record;
 use crate::settings::Settings;
@@ -21,6 +22,31 @@ impl Feed {
     pub fn now_after(&self, elapsed: Duration) -> DateTime<FixedOffset> {
         self.now + TimeDelta::from_std(elapsed).unwrap_or(TimeDelta::MAX)
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BeadFeed {
+    pub bead: Option<Bead>,
+    pub now: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Work {
+    Unknown,
+    Idle {
+        now: DateTime<FixedOffset>,
+    },
+    Active {
+        bead: Bead,
+        now: DateTime<FixedOffset>,
+        page: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+    Bead,
+    Usage,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,16 +92,19 @@ pub fn initial_light(saved: Settings, current: u32, max: u32) -> Light {
 
 #[derive(Debug, PartialEq)]
 pub struct State {
+    pub view: View,
     pub menu: Menu,
     pub port: Port,
     pub light: Light,
     pub feed: Option<Feed>,
+    pub work: Work,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Event {
     Tap(Point),
     Pushed(Feed, Refresh),
+    BeadPushed(BeadFeed),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,14 +125,65 @@ pub fn summary(state: &State) -> String {
 
 pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
     match event {
-        Event::Pushed(feed, refresh) => (
+        Event::Pushed(feed, refresh) => {
+            let effects: Vec<Effect> = shown(&state, View::Usage, refresh);
+            (
+                State {
+                    feed: Some(feed),
+                    ..state
+                },
+                effects,
+            )
+        }
+        Event::BeadPushed(feed) => sighted(state, feed),
+        Event::Tap(point) => tap(state, menu::hit(point)),
+    }
+}
+
+fn shown(state: &State, view: View, refresh: Refresh) -> Vec<Effect> {
+    if state.view == view {
+        vec![Effect::Draw(refresh)]
+    } else {
+        vec![]
+    }
+}
+
+fn sighted(state: State, feed: BeadFeed) -> (State, Vec<Effect>) {
+    let BeadFeed { bead, now } = feed;
+    let kept: Option<usize> = match (&state.work, &bead) {
+        (
+            Work::Active {
+                bead: was, page, ..
+            },
+            Some(is),
+        ) if was.id == is.id => Some(*page),
+        (Work::Active { .. } | Work::Idle { .. } | Work::Unknown, _) => None,
+    };
+    match (bead, kept) {
+        (Some(bead), Some(page)) => {
+            let effects: Vec<Effect> = shown(&state, View::Bead, Refresh::Quiet);
+            let work: Work = Work::Active { bead, now, page };
+            (State { work, ..state }, effects)
+        }
+        (Some(bead), None) => (
             State {
-                feed: Some(feed),
+                view: View::Bead,
+                menu: Menu::Closed,
+                work: Work::Active { bead, now, page: 0 },
                 ..state
             },
-            vec![Effect::Draw(refresh)],
+            vec![Effect::Draw(Refresh::Flash)],
         ),
-        Event::Tap(point) => tap(state, menu::hit(point)),
+        (None, _) => {
+            let effects: Vec<Effect> = shown(&state, View::Bead, Refresh::Quiet);
+            (
+                State {
+                    work: Work::Idle { now },
+                    ..state
+                },
+                effects,
+            )
+        }
     }
 }
 
@@ -117,8 +197,12 @@ fn tap(state: State, hit: Hit) -> (State, Vec<Effect>) {
             },
             vec![Effect::Draw(Refresh::Quiet)],
         ),
+        (Menu::Closed, Hit::Tab(view)) if view == state.view => (state, vec![]),
+        (Menu::Closed, Hit::Tab(view)) => {
+            (State { view, ..state }, vec![Effect::Draw(Refresh::Flash)])
+        }
         (Menu::Closed, Hit::Target(_) | Hit::Panel | Hit::Outside) => (state, vec![]),
-        (Menu::Open, Hit::Button | Hit::Outside | Hit::Target(Target::Close)) => (
+        (Menu::Open, Hit::Button | Hit::Tab(_) | Hit::Outside | Hit::Target(Target::Close)) => (
             State {
                 menu: Menu::Closed,
                 ..state

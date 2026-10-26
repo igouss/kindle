@@ -1,11 +1,34 @@
 use eink::canvas::{Point, Rect};
 
+use crate::app::View;
+
+pub const HEADER: u32 = 70;
 pub const BUTTON: Rect = Rect {
     left: 934,
     top: 0,
     width: 90,
-    height: 110,
+    height: HEADER,
 };
+pub const TABS: [(View, Rect); 2] = [
+    (
+        View::Bead,
+        Rect {
+            left: 16,
+            top: 0,
+            width: 160,
+            height: HEADER,
+        },
+    ),
+    (
+        View::Usage,
+        Rect {
+            left: 184,
+            top: 0,
+            width: 160,
+            height: HEADER,
+        },
+    ),
+];
 pub const PANEL: Rect = Rect {
     left: 594,
     top: 120,
@@ -95,6 +118,7 @@ pub const TARGETS: [(Target, Rect); 7] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hit {
     Button,
+    Tab(View),
     Target(Target),
     Panel,
     Outside,
@@ -108,6 +132,12 @@ pub fn contains(rect: Rect, point: Point) -> bool {
 pub fn hit(point: Point) -> Hit {
     if contains(BUTTON, point) {
         return Hit::Button;
+    }
+    if let Some(&(view, _)) = TABS
+        .iter()
+        .find(|(_, rect): &&(View, Rect)| contains(*rect, point))
+    {
+        return Hit::Tab(view);
     }
     match TARGETS
         .iter()
@@ -163,9 +193,43 @@ mod tests {
     #[test]
     fn the_top_right_corner_is_the_menu_button() {
         assert_eq!(
-            (hit(Point { x: 1023, y: 0 }), hit(Point { x: 934, y: 109 })),
+            (hit(Point { x: 1023, y: 0 }), hit(Point { x: 934, y: 69 })),
             (Hit::Button, Hit::Button)
         );
+    }
+
+    #[test]
+    fn each_tab_is_hit_from_its_left_edge_to_its_right_edge() {
+        let hits: Vec<(Hit, Hit)> = TABS
+            .iter()
+            .map(|&(_, r): &(View, Rect)| {
+                (
+                    hit(Point { x: r.left, y: 0 }),
+                    hit(Point {
+                        x: r.left + r.width as i32 - 1,
+                        y: HEADER as i32 - 1,
+                    }),
+                )
+            })
+            .collect();
+        let expected: Vec<(Hit, Hit)> = TABS
+            .iter()
+            .map(|&(view, _): &(View, Rect)| (Hit::Tab(view), Hit::Tab(view)))
+            .collect();
+        assert_eq!(hits, expected);
+    }
+
+    #[test]
+    fn below_the_header_or_between_tabs_is_no_tab() {
+        let probes: [Hit; 3] = [
+            hit(Point {
+                x: 100,
+                y: HEADER as i32,
+            }),
+            hit(Point { x: 180, y: 30 }),
+            hit(Point { x: 600, y: 30 }),
+        ];
+        assert_eq!(probes, [Hit::Outside, Hit::Outside, Hit::Outside]);
     }
 
     #[test]

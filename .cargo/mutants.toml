@@ -1,2 +1,2 @@
 exclude_globs = ["crates/eink/src/epdc.rs", "crates/usage/src/serve.rs"]
-exclude_re = ["replace main -> ExitCode", "replace run -> Result", "replace uptime -> Duration", "replace push -> Result<String, String>"]
+exclude_re = ["replace main -> ExitCode", "replace run -> Result", "replace uptime -> Duration", "replace push -> Result<String, String>", "replace bead -> Result<String, String>", "replace stdin -> Result<String, String>", "replace send -> Result<String, String>"]

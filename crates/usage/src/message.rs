@@ -2,7 +2,8 @@ use chrono::{DateTime, FixedOffset};
 use eink::epdc::Refresh;
 use serde::Deserialize;
 
-use crate::app::Feed;
+use crate::app::{BeadFeed, Feed};
+use crate::bead::Wire;
 use crate::record::Record;
 
 #[derive(Deserialize)]
@@ -13,16 +14,28 @@ enum Push {
         flash: bool,
         record: Record,
     },
+    Bead {
+        now: String,
+        bead: Option<Wire>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Message {
     Usage(Feed, Refresh),
+    Bead(BeadFeed),
 }
 
 pub fn encode_usage(now: DateTime<FixedOffset>, flash: bool, record: &str) -> String {
     format!(
         r#"{{"kind":"usage","now":"{}","flash":{flash},"record":{record}}}"#,
+        now.to_rfc3339()
+    )
+}
+
+pub fn encode_bead(now: DateTime<FixedOffset>, bead: &str) -> String {
+    format!(
+        r#"{{"kind":"bead","now":"{}","bead":{bead}}}"#,
         now.to_rfc3339()
     )
 }
@@ -45,6 +58,10 @@ pub fn decode(text: &str) -> Result<Message, String> {
                 refresh,
             ))
         }
+        Push::Bead { now, bead } => Ok(Message::Bead(BeadFeed {
+            bead: bead.map(Wire::bead).transpose()?,
+            now: time(&now)?,
+        })),
     }
 }
 
@@ -63,7 +80,73 @@ mod tests {
     fn usage(message: Message) -> (Feed, Refresh) {
         match message {
             Message::Usage(feed, refresh) => (feed, refresh),
+            Message::Bead(_) => panic!("expected a usage push"),
         }
+    }
+
+    fn bead(message: Message) -> BeadFeed {
+        match message {
+            Message::Bead(feed) => feed,
+            Message::Usage(..) => panic!("expected a bead push"),
+        }
+    }
+
+    const SNAPSHOT: &str = r###"{"project":"kindle","id":"kindle-bxx.4","title":"bead push","priority":1,"issue_type":"task","assignee":"elendal","started":"2026-10-26T09:00:00-04:00","description":"## What\n\nText."}"###;
+
+    #[test]
+    fn a_bead_push_round_trips_every_field() {
+        let feed: BeadFeed =
+            bead(decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), SNAPSHOT)).unwrap());
+        let got: crate::bead::Bead = feed.bead.unwrap();
+        assert_eq!(
+            (
+                feed.now,
+                got.project.as_str(),
+                got.id.as_str(),
+                got.title.as_str(),
+                got.priority,
+                got.issue_type.as_str(),
+                got.assignee.as_deref(),
+                got.started,
+                got.description.as_str()
+            ),
+            (
+                at("2026-10-26T09:30:00-04:00"),
+                "kindle",
+                "kindle-bxx.4",
+                "bead push",
+                1,
+                "task",
+                Some("elendal"),
+                at("2026-10-26T09:00:00-04:00"),
+                "## What\n\nText."
+            )
+        );
+    }
+
+    #[test]
+    fn a_bead_push_of_null_says_nothing_is_in_progress() {
+        let feed: BeadFeed =
+            bead(decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), "null")).unwrap());
+        assert_eq!(feed.bead, None);
+    }
+
+    #[test]
+    fn a_bead_with_a_bad_start_or_a_missing_field_is_refused() {
+        let bad_start: String = SNAPSHOT.replace("2026-10-26T09:00:00-04:00", "this morning");
+        let no_title: String = SNAPSHOT.replace(r#""title":"bead push","#, "");
+        let refused: [Result<Message, String>; 2] = [
+            decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), &bad_start)),
+            decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), &no_title)),
+        ];
+        assert!(
+            refused[0]
+                .as_ref()
+                .is_err_and(|e: &String| e.starts_with("started this morning"))
+                && refused[1]
+                    .as_ref()
+                    .is_err_and(|e: &String| e.starts_with("push:"))
+        );
     }
 
     #[test]

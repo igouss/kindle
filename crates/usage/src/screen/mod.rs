@@ -1,15 +1,16 @@
 use eink::canvas::{BLACK, Canvas, Geometry, Port, Rect, WHITE};
 use eink::text::Typeface;
 
-use crate::app::Light;
+use crate::app::{Light, View};
 use crate::menu::{self, Target};
-use crate::view::Dashboard;
+use crate::view::{BeadPage, Dashboard};
 
+mod bead;
 mod usage;
 
 const MARGIN: i32 = 40;
 const GUTTER: i32 = 40;
-pub(super) const BANNER: u32 = 110;
+const SOFT: u8 = 0x55;
 
 pub struct Faces {
     pub regular: Typeface,
@@ -48,45 +49,71 @@ pub struct MenuView {
     pub light: Light,
 }
 
+pub enum Page<'a> {
+    Bead(&'a BeadPage),
+    Usage(&'a Dashboard),
+}
+
 pub fn render(
-    view: &Dashboard,
+    page: &Page<'_>,
     faces: &Faces,
     geometry: Geometry,
     menu: Option<MenuView>,
 ) -> Canvas {
-    let mut canvas: Canvas = usage::page(view, faces, geometry);
+    let mut canvas: Canvas = Canvas::new(geometry);
+    match page {
+        Page::Bead(bead) => {
+            header(&mut canvas, faces, View::Bead);
+            bead::page(&mut canvas, bead, faces);
+        }
+        Page::Usage(view) => {
+            header(&mut canvas, faces, View::Usage);
+            usage::page(&mut canvas, view, faces);
+        }
+    }
     if let Some(menu) = menu {
         panel(&mut canvas, menu, faces);
     }
     canvas
 }
 
-pub(super) fn banner(canvas: &mut Canvas, view: &Dashboard, faces: &Faces) {
+fn header(canvas: &mut Canvas, faces: &Faces, shown: View) {
     let width: u32 = canvas.geometry().width;
     canvas.fill_rect(
         Rect {
             left: 0,
             top: 0,
             width,
-            height: BANNER,
+            height: menu::HEADER,
         },
         BLACK,
     );
-    faces
-        .bold
-        .draw(canvas, &view.title, 52.0, MARGIN, 64, WHITE);
-    faces
-        .regular
-        .draw(canvas, &view.plan, 28.0, MARGIN, 98, WHITE);
-    let updated: i32 = menu::BUTTON.left - 16 - faces.regular.width(&view.updated, 24.0) as i32;
-    faces
-        .regular
-        .draw(canvas, &view.updated, 24.0, updated, 98, WHITE);
+    for (view, rect) in menu::TABS {
+        let label: &str = match view {
+            View::Bead => "Bead",
+            View::Usage => "Usage",
+        };
+        let ink: u8 = if view == shown {
+            canvas.fill_rect(
+                Rect {
+                    top: rect.top + 10,
+                    height: rect.height - 20,
+                    ..rect
+                },
+                WHITE,
+            );
+            BLACK
+        } else {
+            WHITE
+        };
+        let left: i32 = rect.left + (rect.width as i32 - faces.bold.width(label, 30.0) as i32) / 2;
+        faces.bold.draw(canvas, label, 30.0, left, 46, ink);
+    }
     let bar_left: i32 = menu::BUTTON.left + 25;
     for row in 0..3 {
         let bar: Rect = Rect {
             left: bar_left,
-            top: 37 + 15 * row,
+            top: 22 + 13 * row,
             width: 40,
             height: 6,
         };

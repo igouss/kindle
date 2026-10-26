@@ -1,4 +1,5 @@
 mod app;
+mod bead;
 mod menu;
 mod message;
 mod record;
@@ -14,8 +15,7 @@ use std::process::ExitCode;
 
 use chrono::{DateTime, FixedOffset};
 
-const USAGE: &str =
-    "usage: usage serve\n       usage push --now <RFC 3339 time> [--flash] < claude.json";
+const USAGE: &str = "usage: usage serve\n       usage push --now <RFC 3339 time> [--flash] < claude.json\n       usage bead --now <RFC 3339 time> < bead.json";
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -24,24 +24,34 @@ enum Command {
         now: DateTime<FixedOffset>,
         flash: bool,
     },
+    Bead {
+        now: DateTime<FixedOffset>,
+    },
 }
 
 fn command(args: &[String]) -> Result<Command, String> {
     match args.split_first() {
         Some((first, rest)) if first == "serve" && rest.is_empty() => Ok(Command::Serve),
-        Some((first, rest)) if first == "push" => push_options(rest),
+        Some((first, rest)) if first == "push" => {
+            let (now, flash): (DateTime<FixedOffset>, bool) = options(rest, true)?;
+            Ok(Command::Push { now, flash })
+        }
+        Some((first, rest)) if first == "bead" => {
+            let (now, _): (DateTime<FixedOffset>, bool) = options(rest, false)?;
+            Ok(Command::Bead { now })
+        }
         Some((other, _)) => Err(format!("unknown command {other}\n{USAGE}")),
         None => Err(String::from(USAGE)),
     }
 }
 
-fn push_options(args: &[String]) -> Result<Command, String> {
+fn options(args: &[String], flash_allowed: bool) -> Result<(DateTime<FixedOffset>, bool), String> {
     let mut now: Option<DateTime<FixedOffset>> = None;
     let mut flash: bool = false;
     let mut rest: std::slice::Iter<'_, String> = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
-            "--flash" => flash = true,
+            "--flash" if flash_allowed => flash = true,
             "--now" => {
                 let text: &String = rest.next().ok_or(USAGE)?;
                 now = Some(
@@ -52,19 +62,30 @@ fn push_options(args: &[String]) -> Result<Command, String> {
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
     }
-    Ok(Command::Push {
-        now: now.ok_or(USAGE)?,
-        flash,
-    })
+    Ok((now.ok_or(USAGE)?, flash))
+}
+
+fn stdin() -> Result<String, String> {
+    let mut text: String = String::new();
+    std::io::stdin()
+        .read_to_string(&mut text)
+        .map_err(|e: std::io::Error| format!("stdin: {e}"))?;
+    Ok(text)
 }
 
 fn push(now: DateTime<FixedOffset>, flash: bool) -> Result<String, String> {
-    let mut record: String = String::new();
-    std::io::stdin()
-        .read_to_string(&mut record)
-        .map_err(|e: std::io::Error| format!("stdin: {e}"))?;
+    let record: String = stdin()?;
     record::parse(&record).map_err(|e: serde_json::Error| format!("usage record: {e}"))?;
-    let message: String = message::encode_usage(now, flash, &record);
+    send(&message::encode_usage(now, flash, &record))
+}
+
+fn bead(now: DateTime<FixedOffset>) -> Result<String, String> {
+    let message: String = message::encode_bead(now, stdin()?.trim());
+    message::decode(&message).map_err(|fault: String| format!("bead snapshot: {fault}"))?;
+    send(&message)
+}
+
+fn send(message: &str) -> Result<String, String> {
     let mut stream: UnixStream =
         UnixStream::connect(serve::SOCKET).map_err(|e: std::io::Error| {
             format!("{}: {e} (is `usage serve` running?)", serve::SOCKET)
@@ -90,6 +111,7 @@ fn run() -> Result<(), String> {
     match command(&args)? {
         Command::Serve => serve::run(),
         Command::Push { now, flash } => push(now, flash).map(|done: String| println!("{done}")),
+        Command::Bead { now } => bead(now).map(|done: String| println!("{done}")),
     }
 }
 
@@ -123,6 +145,25 @@ mod tests {
                 command(&args(&["serve", "x"])).is_err()
             ),
             (Ok(Command::Serve), true)
+        );
+    }
+
+    #[test]
+    fn bead_needs_now_and_takes_no_flash() {
+        let now: DateTime<FixedOffset> = at("2026-10-26T09:30:00-04:00");
+        assert_eq!(
+            (
+                command(&args(&["bead", "--now", "2026-10-26T09:30:00-04:00"])),
+                command(&args(&["bead"])).is_err(),
+                command(&args(&[
+                    "bead",
+                    "--flash",
+                    "--now",
+                    "2026-10-26T09:30:00-04:00"
+                ]))
+                .is_err_and(|e: String| e.starts_with("unknown argument --flash"))
+            ),
+            (Ok(Command::Bead { now }), true, true)
         );
     }
 

@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Weekday};
 
+use crate::app::Work;
+use crate::bead::Bead;
 use crate::record::{Bucket, Day, Limit, Record};
 
 const MODEL_ROWS: usize = 4;
@@ -35,6 +37,40 @@ pub struct DayRow {
 pub struct ModelRow {
     pub name: String,
     pub tokens: u64,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BeadPage {
+    Waiting,
+    Idle,
+    Active {
+        place: String,
+        title: String,
+        meta: String,
+    },
+}
+
+pub fn bead_page(work: &Work, since_push: Duration) -> BeadPage {
+    match work {
+        Work::Unknown => BeadPage::Waiting,
+        Work::Idle { .. } => BeadPage::Idle,
+        Work::Active { bead, now, .. } => {
+            let at: DateTime<FixedOffset> =
+                *now + chrono::TimeDelta::from_std(since_push).unwrap_or(chrono::TimeDelta::MAX);
+            BeadPage::Active {
+                place: format!("{} \u{b7} {}", bead.project, bead.id),
+                title: bead.title.clone(),
+                meta: meta(bead, (at - bead.started).to_std().unwrap_or(Duration::ZERO)),
+            }
+        }
+    }
+}
+
+fn meta(bead: &Bead, elapsed: Duration) -> String {
+    let mut parts: Vec<String> = vec![format!("P{}", bead.priority), bead.issue_type.clone()];
+    parts.extend(bead.assignee.clone());
+    parts.push(format_duration(elapsed));
+    parts.join(" \u{b7} ")
 }
 
 pub fn waiting() -> Dashboard {
@@ -244,6 +280,82 @@ mod tests {
     }
 
     const NOW: &str = "2026-10-25T19:41:30-04:00";
+
+    fn working(assignee: Option<&str>) -> Work {
+        Work::Active {
+            bead: Bead {
+                project: String::from("kindle"),
+                id: String::from("kindle-bxx.4"),
+                title: String::from("bead push"),
+                priority: 1,
+                issue_type: String::from("task"),
+                assignee: assignee.map(str::to_owned),
+                started: at("2026-10-26T09:00:00-04:00"),
+                description: String::new(),
+            },
+            now: at("2026-10-26T09:42:00-04:00"),
+            page: 0,
+        }
+    }
+
+    #[test]
+    fn an_active_bead_shows_where_it_is_its_title_and_its_metadata() {
+        assert_eq!(
+            bead_page(&working(Some("elendal")), Duration::ZERO),
+            BeadPage::Active {
+                place: String::from("kindle \u{b7} kindle-bxx.4"),
+                title: String::from("bead push"),
+                meta: String::from("P1 \u{b7} task \u{b7} elendal \u{b7} 42m"),
+            }
+        );
+    }
+
+    #[test]
+    fn an_unassigned_bead_leaves_the_assignee_out_and_elapsed_time_runs_on() {
+        let page: BeadPage = bead_page(&working(None), Duration::from_secs(3600));
+        assert_eq!(
+            page,
+            BeadPage::Active {
+                place: String::from("kindle \u{b7} kindle-bxx.4"),
+                title: String::from("bead push"),
+                meta: String::from("P1 \u{b7} task \u{b7} 1h 42m"),
+            }
+        );
+    }
+
+    #[test]
+    fn before_any_bead_push_the_page_waits_and_after_an_empty_one_it_is_idle() {
+        let idle: Work = Work::Idle {
+            now: at("2026-10-26T09:42:00-04:00"),
+        };
+        assert_eq!(
+            (
+                bead_page(&Work::Unknown, Duration::ZERO),
+                bead_page(&idle, Duration::ZERO)
+            ),
+            (BeadPage::Waiting, BeadPage::Idle)
+        );
+    }
+
+    #[test]
+    fn a_start_after_the_pushed_clock_shows_the_shortest_elapsed_time() {
+        let early: Work = match working(None) {
+            Work::Active { bead, page, .. } => Work::Active {
+                bead,
+                now: at("2026-10-26T08:00:00-04:00"),
+                page,
+            },
+            other @ (Work::Unknown | Work::Idle { .. }) => other,
+        };
+        assert_eq!(
+            bead_page(&early, Duration::ZERO),
+            BeadPage::Active {
+                place: String::from("kindle \u{b7} kindle-bxx.4"),
+                title: String::from("bead push"),
+                meta: String::from("P1 \u{b7} task \u{b7} 1m"),
+            }
+        );
+    }
 
     #[test]
     fn tokens_below_a_thousand_print_whole() {

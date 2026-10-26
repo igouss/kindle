@@ -23,10 +23,12 @@ fn button() -> Event {
 
 fn state(menu: Menu, level: u32, on: bool) -> State {
     State {
+        view: View::Usage,
         menu,
         port: Port::Right,
         light: Light { level, on, max: 25 },
         feed: None,
+        work: Work::Unknown,
     }
 }
 
@@ -256,6 +258,220 @@ fn the_reply_names_the_side_and_the_light_actually_set() {
         (
             String::from("drawn, USB left, light 0"),
             String::from("drawn, USB right, light 12")
+        )
+    );
+}
+
+fn at(text: &str) -> DateTime<FixedOffset> {
+    DateTime::parse_from_rfc3339(text).unwrap()
+}
+
+fn bead(id: &str) -> Bead {
+    Bead {
+        project: String::from("kindle"),
+        id: id.to_owned(),
+        title: format!("title of {id}"),
+        priority: 1,
+        issue_type: String::from("task"),
+        assignee: None,
+        started: at("2026-10-26T09:00:00-04:00"),
+        description: String::new(),
+    }
+}
+
+fn sighting(bead: Option<Bead>) -> Event {
+    Event::BeadPushed(BeadFeed {
+        bead,
+        now: at("2026-10-26T09:30:00-04:00"),
+    })
+}
+
+fn active(id: &str, page: usize) -> Work {
+    Work::Active {
+        bead: bead(id),
+        now: at("2026-10-26T09:30:00-04:00"),
+        page,
+    }
+}
+
+fn on_tab(view: View) -> Event {
+    let rect: Rect = menu::TABS
+        .iter()
+        .find(|(v, _): &&(View, Rect)| *v == view)
+        .unwrap()
+        .1;
+    Event::Tap(centre(rect))
+}
+
+#[test]
+fn a_first_bead_opens_the_bead_tab_at_its_first_page_and_closes_the_menu() {
+    let (next, effects): (State, Vec<Effect>) =
+        step(state(Menu::Open, 12, true), sighting(Some(bead("a"))));
+    assert_eq!(
+        (next.view, next.menu, next.work, effects),
+        (
+            View::Bead,
+            Menu::Closed,
+            active("a", 0),
+            vec![Effect::Draw(Refresh::Flash)]
+        )
+    );
+}
+
+#[test]
+fn the_same_bead_again_keeps_its_page_and_redraws_quietly_only_where_it_shows() {
+    let reading: State = State {
+        view: View::Bead,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    let elsewhere: State = State {
+        view: View::Usage,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    let (seen, seen_effects): (State, Vec<Effect>) = step(reading, sighting(Some(bead("a"))));
+    let (unseen, unseen_effects): (State, Vec<Effect>) = step(elsewhere, sighting(Some(bead("a"))));
+    assert_eq!(
+        (
+            seen.work,
+            seen_effects,
+            unseen.view,
+            unseen.work,
+            unseen_effects
+        ),
+        (
+            active("a", 3),
+            vec![Effect::Draw(Refresh::Quiet)],
+            View::Usage,
+            active("a", 3),
+            vec![]
+        )
+    );
+}
+
+#[test]
+fn the_same_bead_again_replaces_what_was_known_of_it() {
+    let reading: State = State {
+        view: View::Bead,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    let edited: Bead = Bead {
+        title: String::from("a new title"),
+        ..bead("a")
+    };
+    let later: Event = Event::BeadPushed(BeadFeed {
+        bead: Some(edited.clone()),
+        now: at("2026-10-26T10:00:00-04:00"),
+    });
+    assert_eq!(
+        step(reading, later).0.work,
+        Work::Active {
+            bead: edited,
+            now: at("2026-10-26T10:00:00-04:00"),
+            page: 3
+        }
+    );
+}
+
+#[test]
+fn a_different_bead_starts_again_at_its_first_page_on_the_bead_tab() {
+    let reading: State = State {
+        view: View::Usage,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    let (next, effects): (State, Vec<Effect>) = step(reading, sighting(Some(bead("b"))));
+    assert_eq!(
+        (next.view, next.work, effects),
+        (
+            View::Bead,
+            active("b", 0),
+            vec![Effect::Draw(Refresh::Flash)]
+        )
+    );
+}
+
+#[test]
+fn nothing_in_progress_makes_the_work_idle_and_keeps_the_tab() {
+    let reading: State = State {
+        view: View::Bead,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    let (closed, effects): (State, Vec<Effect>) = step(reading, sighting(None));
+    let (never, never_effects): (State, Vec<Effect>) =
+        step(state(Menu::Closed, 12, true), sighting(None));
+    assert_eq!(
+        (
+            closed.view,
+            closed.work,
+            effects,
+            never.view,
+            never.work,
+            never_effects
+        ),
+        (
+            View::Bead,
+            Work::Idle {
+                now: at("2026-10-26T09:30:00-04:00")
+            },
+            vec![Effect::Draw(Refresh::Quiet)],
+            View::Usage,
+            Work::Idle {
+                now: at("2026-10-26T09:30:00-04:00")
+            },
+            vec![]
+        )
+    );
+}
+
+#[test]
+fn a_usage_push_redraws_only_the_usage_tab() {
+    let reading: State = State {
+        view: View::Bead,
+        ..state(Menu::Closed, 12, true)
+    };
+    let (next, effects): (State, Vec<Effect>) =
+        step(reading, Event::Pushed(feed(), Refresh::Flash));
+    assert_eq!((next.feed, effects), (Some(feed()), vec![]));
+}
+
+#[test]
+fn a_tab_shows_its_view_with_a_flash_and_the_shown_tab_does_nothing() {
+    let (bead_tab, effects): (State, Vec<Effect>) =
+        step(state(Menu::Closed, 12, true), on_tab(View::Bead));
+    let same: (State, Vec<Effect>) = step(state(Menu::Closed, 12, true), on_tab(View::Usage));
+    assert_eq!(
+        (bead_tab.view, effects, same),
+        (
+            View::Bead,
+            vec![Effect::Draw(Refresh::Flash)],
+            (state(Menu::Closed, 12, true), vec![])
+        )
+    );
+}
+
+#[test]
+fn leaving_the_bead_tab_and_coming_back_keeps_the_page() {
+    let reading: State = State {
+        view: View::Bead,
+        work: active("a", 3),
+        ..state(Menu::Closed, 12, true)
+    };
+    let (away, _): (State, Vec<Effect>) = step(reading, on_tab(View::Usage));
+    let (back, _): (State, Vec<Effect>) = step(away, on_tab(View::Bead));
+    assert_eq!((back.view, back.work), (View::Bead, active("a", 3)));
+}
+
+#[test]
+fn with_the_menu_open_a_tab_only_closes_the_menu() {
+    assert_eq!(
+        step(state(Menu::Open, 12, true), on_tab(View::Bead)),
+        (
+            state(Menu::Closed, 12, true),
+            vec![Effect::Draw(Refresh::Quiet)]
         )
     );
 }

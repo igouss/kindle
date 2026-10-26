@@ -1,10 +1,11 @@
-use eink::canvas::{BLACK, Canvas, Geometry, Rect};
+use eink::canvas::{BLACK, Canvas, Rect};
 use eink::text::Typeface;
 
-use super::{BANNER, Column, Faces, banner, columns};
+use super::{Column, Faces, MARGIN, SOFT, columns};
 use crate::view::{Dashboard, DayRow, Meter, ModelRow, format_duration, format_tokens};
 
-pub(super) const TOP: i32 = BANNER as i32 + 10;
+pub(super) const TOP: i32 = 120;
+pub(super) const SUBTITLE: i32 = 104;
 pub(super) const LIMIT_BLOCK: i32 = 110;
 pub(super) const METER_HEIGHT: u32 = 20;
 pub(super) const DAY_ROW: i32 = 54;
@@ -15,31 +16,37 @@ pub(super) const TRACK: u8 = 0xAA;
 pub(super) const QUIET_DAY: u8 = 0x66;
 pub(super) const MODEL_BAR: u8 = 0xCC;
 
-pub(super) fn page(view: &Dashboard, faces: &Faces, geometry: Geometry) -> Canvas {
-    let mut canvas: Canvas = Canvas::new(geometry);
-    let (left, right): (Column, Column) = columns(geometry);
-    banner(&mut canvas, view, faces);
+pub(super) fn page(canvas: &mut Canvas, view: &Dashboard, faces: &Faces) {
+    let (left, right): (Column, Column) = columns(canvas.geometry());
+    let subtitle: String = format!("{} \u{b7} {}", view.title, view.plan);
+    faces
+        .bold
+        .draw(canvas, &subtitle, 26.0, MARGIN, SUBTITLE, BLACK);
+    let updated: i32 = right.right - faces.regular.width(&view.updated, 24.0) as i32;
+    faces
+        .regular
+        .draw(canvas, &view.updated, 24.0, updated, SUBTITLE, SOFT);
 
     let mut y: i32 = TOP;
     for meter in &view.limits {
-        limit(&mut canvas, meter, faces, y, left);
+        limit(canvas, meter, faces, y, left);
         y += LIMIT_BLOCK;
     }
     y += 50;
     faces
         .bold
-        .draw(&mut canvas, "Tokens by model", 30.0, left.left, y, BLACK);
+        .draw(canvas, "Tokens by model", 30.0, left.left, y, BLACK);
     y += 15;
     let heaviest: u64 = view.models.first().map_or(0, |m: &ModelRow| m.tokens);
     for row in &view.models {
-        model(&mut canvas, row, heaviest, faces, y, left);
+        model(canvas, row, heaviest, faces, y, left);
         y += MODEL_ROW;
     }
 
     let mut y: i32 = TOP + 36;
     faces
         .bold
-        .draw(&mut canvas, "Tokens by day", 30.0, right.left, y, BLACK);
+        .draw(canvas, "Tokens by day", 30.0, right.left, y, BLACK);
     y += 15;
     let peak: u64 = view
         .days
@@ -48,18 +55,17 @@ pub(super) fn page(view: &Dashboard, faces: &Faces, geometry: Geometry) -> Canva
         .max()
         .unwrap_or(0);
     for row in &view.days {
-        day(&mut canvas, row, peak, faces, y, right);
+        day(canvas, row, peak, faces, y, right);
         y += DAY_ROW;
     }
     faces.regular.draw(
-        &mut canvas,
+        canvas,
         &view.today,
         24.0,
         right.left + DAY_LABEL,
         y + 20,
         BLACK,
     );
-    canvas
 }
 
 pub fn share(width: u32, part: u64, whole: u64) -> u32 {
