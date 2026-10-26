@@ -1,6 +1,8 @@
-use eink::canvas::{BLACK, Canvas, Geometry, Rect, WHITE};
+use eink::canvas::{BLACK, Canvas, Geometry, Port, Rect, WHITE};
 use eink::text::Typeface;
 
+use crate::app::Light;
+use crate::menu::{self, Target};
 use crate::view::{Dashboard, DayRow, Meter, ModelRow, format_duration, format_tokens};
 
 const MARGIN: i32 = 40;
@@ -48,10 +50,29 @@ pub fn columns(geometry: Geometry) -> (Column, Column) {
     )
 }
 
-pub fn render(view: &Dashboard, faces: &Faces, geometry: Geometry) -> Canvas {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MenuView {
+    pub port: Port,
+    pub light: Light,
+}
+
+pub fn render(
+    view: &Dashboard,
+    faces: &Faces,
+    geometry: Geometry,
+    menu: Option<MenuView>,
+) -> Canvas {
+    let mut canvas: Canvas = page(view, faces, geometry);
+    if let Some(menu) = menu {
+        panel(&mut canvas, menu, faces);
+    }
+    canvas
+}
+
+fn page(view: &Dashboard, faces: &Faces, geometry: Geometry) -> Canvas {
     let mut canvas: Canvas = Canvas::new(geometry);
     let (left, right): (Column, Column) = columns(geometry);
-    banner(&mut canvas, view, faces, right.right);
+    banner(&mut canvas, view, faces);
 
     let mut y: i32 = TOP;
     for meter in &view.limits {
@@ -107,7 +128,7 @@ pub fn filled(width: u32, fraction: f64) -> u32 {
     (f64::from(width) * fraction.clamp(0.0, 1.0)).round() as u32
 }
 
-fn banner(canvas: &mut Canvas, view: &Dashboard, faces: &Faces, right: i32) {
+fn banner(canvas: &mut Canvas, view: &Dashboard, faces: &Faces) {
     let width: u32 = canvas.geometry().width;
     canvas.fill_rect(
         Rect {
@@ -124,10 +145,95 @@ fn banner(canvas: &mut Canvas, view: &Dashboard, faces: &Faces, right: i32) {
     faces
         .regular
         .draw(canvas, &view.plan, 28.0, MARGIN, 98, WHITE);
-    let updated: i32 = right - faces.regular.width(&view.updated, 24.0) as i32;
+    let updated: i32 = menu::BUTTON.left - 16 - faces.regular.width(&view.updated, 24.0) as i32;
     faces
         .regular
         .draw(canvas, &view.updated, 24.0, updated, 98, WHITE);
+    let bar_left: i32 = menu::BUTTON.left + 25;
+    for row in 0..3 {
+        let bar: Rect = Rect {
+            left: bar_left,
+            top: 37 + 15 * row,
+            width: 40,
+            height: 6,
+        };
+        canvas.fill_rect(bar, WHITE);
+    }
+}
+
+fn panel(canvas: &mut Canvas, view: MenuView, faces: &Faces) {
+    let frame: Rect = menu::PANEL;
+    canvas.fill_rect(frame, BLACK);
+    let inner: Rect = Rect {
+        left: frame.left + 3,
+        top: frame.top + 3,
+        width: frame.width - 6,
+        height: frame.height - 6,
+    };
+    canvas.fill_rect(inner, WHITE);
+    let left: i32 = menu::TARGETS[0].1.left;
+    faces.bold.draw(
+        canvas,
+        "Orientation",
+        28.0,
+        left,
+        menu::ORIENTATION_BASELINE,
+        BLACK,
+    );
+    faces
+        .bold
+        .draw(canvas, "Light", 28.0, left, menu::LIGHT_BASELINE, BLACK);
+    let level: String = if view.light.on {
+        format!("{} of {}", view.light.level, view.light.max)
+    } else {
+        String::from("off")
+    };
+    let right: i32 = frame.left + frame.width as i32 - 20;
+    let level_left: i32 = right - faces.regular.width(&level, 26.0) as i32;
+    faces.regular.draw(
+        canvas,
+        &level,
+        26.0,
+        level_left,
+        menu::LIGHT_BASELINE,
+        BLACK,
+    );
+    for (target, rect) in menu::TARGETS {
+        let (label, chosen): (&str, bool) = match target {
+            Target::PortLeft => ("USB left", view.port == Port::Left),
+            Target::PortRight => ("USB right", view.port == Port::Right),
+            Target::Dimmer => ("\u{2212}", false),
+            Target::LightSwitch => (if view.light.on { "Off" } else { "On" }, false),
+            Target::Brighter => ("+", false),
+            Target::Close => ("Close", false),
+        };
+        button(canvas, faces, rect, label, chosen);
+    }
+}
+
+fn button(canvas: &mut Canvas, faces: &Faces, rect: Rect, label: &str, chosen: bool) {
+    let (paper, ink): (u8, u8) = if chosen {
+        (BLACK, WHITE)
+    } else {
+        (WHITE, BLACK)
+    };
+    canvas.fill_rect(rect, BLACK);
+    let inner: Rect = Rect {
+        left: rect.left + 2,
+        top: rect.top + 2,
+        width: rect.width - 4,
+        height: rect.height - 4,
+    };
+    canvas.fill_rect(inner, paper);
+    let left: i32 = rect.left + (rect.width as i32 - faces.bold.width(label, 30.0) as i32) / 2;
+    faces.bold.draw(
+        canvas,
+        label,
+        30.0,
+        left,
+        rect.top + rect.height as i32 / 2 + 11,
+        ink,
+    );
 }
 
 fn limit(canvas: &mut Canvas, meter: &Meter, faces: &Faces, top: i32, column: Column) {
@@ -274,15 +380,15 @@ mod tests {
         [header.as_bytes(), canvas.pixels()].concat()
     }
 
-    #[test]
-    fn a_full_dashboard_matches_the_golden_page() {
-        let golden: std::path::PathBuf =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("golden/full.pgm");
-        let actual: Vec<u8> = pgm(&render(&full(), &faces(), PAGE));
+    fn golden(name: &str, canvas: &Canvas) {
+        let path: std::path::PathBuf = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("golden")
+            .join(name);
+        let actual: Vec<u8> = pgm(canvas);
         if std::env::var_os("UPDATE_GOLDEN").is_some() {
-            std::fs::write(&golden, &actual).unwrap();
+            std::fs::write(&path, &actual).unwrap();
         }
-        let expected: Vec<u8> = std::fs::read(&golden).unwrap();
+        let expected: Vec<u8> = std::fs::read(&path).unwrap();
         let differing: usize = actual
             .iter()
             .zip(&expected)
@@ -292,8 +398,83 @@ mod tests {
             (differing, actual.len()),
             (0, expected.len()),
             "UPDATE_GOLDEN=1 cargo test rewrites {}",
-            golden.display()
+            path.display()
         );
+    }
+
+    fn menu_view(port: Port, on: bool) -> MenuView {
+        MenuView {
+            port,
+            light: Light {
+                level: 12,
+                on,
+                max: 25,
+            },
+        }
+    }
+
+    #[test]
+    fn a_full_dashboard_matches_the_golden_page() {
+        golden("full.pgm", &render(&full(), &faces(), PAGE, None));
+    }
+
+    #[test]
+    fn the_open_menu_matches_the_golden_page() {
+        golden(
+            "menu.pgm",
+            &render(&full(), &faces(), PAGE, Some(menu_view(Port::Right, true))),
+        );
+    }
+
+    #[test]
+    fn the_chosen_side_is_filled_black_and_the_other_left_white() {
+        let probe = |port: Port| -> [Option<u8>; 2] {
+            let canvas: Canvas = render(&full(), &faces(), PAGE, Some(menu_view(port, true)));
+            let at = |target: Target| -> Option<u8> {
+                let r: Rect = menu::TARGETS
+                    .iter()
+                    .find(|(t, _): &&(Target, Rect)| *t == target)
+                    .unwrap()
+                    .1;
+                canvas.pixel((r.left + 6) as u32, (r.top + 6) as u32)
+            };
+            [at(Target::PortLeft), at(Target::PortRight)]
+        };
+        assert_eq!(
+            (probe(Port::Left), probe(Port::Right)),
+            ([Some(BLACK), Some(WHITE)], [Some(WHITE), Some(BLACK)])
+        );
+    }
+
+    #[test]
+    fn the_light_switch_offers_the_opposite_state() {
+        let switch: Rect = menu::TARGETS[3].1;
+        let inked = |on: bool| -> usize {
+            let canvas: Canvas = render(&full(), &faces(), PAGE, Some(menu_view(Port::Right, on)));
+            (switch.top as u32..switch.top as u32 + switch.height)
+                .flat_map(|y: u32| {
+                    (switch.left as u32 + 4..switch.left as u32 + switch.width - 4)
+                        .map(move |x: u32| (x, y))
+                })
+                .filter(|&(x, y): &(u32, u32)| canvas.pixel(x, y) != Some(WHITE))
+                .count()
+        };
+        assert_ne!(inked(true), inked(false));
+    }
+
+    #[test]
+    fn the_menu_button_shows_three_white_bars_on_the_banner() {
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
+        let x: u32 = (menu::BUTTON.left + 45) as u32;
+        let column: Vec<Option<u8>> = [36, 37, 42, 43, 52, 57, 67, 72, 73]
+            .map(|y: u32| canvas.pixel(x, y))
+            .to_vec();
+        let expected: Vec<Option<u8>> = [
+            BLACK, WHITE, WHITE, BLACK, WHITE, WHITE, WHITE, WHITE, BLACK,
+        ]
+        .map(Some)
+        .to_vec();
+        assert_eq!(column, expected);
     }
 
     #[test]
@@ -341,7 +522,7 @@ mod tests {
 
     #[test]
     fn both_columns_end_above_the_bottom_margin() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         let last = |xs: std::ops::Range<u32>| -> u32 {
             (0..PAGE.height)
                 .rev()
@@ -357,13 +538,13 @@ mod tests {
 
     #[test]
     fn the_gutter_stays_blank_below_the_banner() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         assert!(!(BANNER..PAGE.height).any(|y: u32| inked(&canvas, 493..532, y)));
     }
 
     #[test]
     fn the_banner_is_black_where_no_text_falls() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         let probes: [Option<u8>; 3] = [
             canvas.pixel(5, 5),
             canvas.pixel(1023, 109),
@@ -374,7 +555,7 @@ mod tests {
 
     #[test]
     fn a_half_used_meter_is_black_to_its_middle_and_track_gray_after() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         let y: u32 = TOP as u32 + 48 + METER_HEIGHT / 2;
         let probes: [Option<u8>; 5] = [
             canvas.pixel(40, y),
@@ -397,7 +578,7 @@ mod tests {
 
     #[test]
     fn todays_bar_is_black_and_the_busiest_day_fills_the_room() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         let y: u32 = (TOP + 36 + 15 + 6 * DAY_ROW + 20) as u32;
         let end: u32 = (984 - DAY_TOKENS) as u32;
         assert_eq!(
@@ -408,7 +589,7 @@ mod tests {
 
     #[test]
     fn a_quiet_day_draws_no_bar_and_a_busier_one_a_gray_bar() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         let y: u32 = (TOP + 36 + 15 + 20) as u32;
         let x: u32 = (532 + DAY_LABEL) as u32 + 5;
         assert_eq!(
@@ -419,7 +600,7 @@ mod tests {
 
     #[test]
     fn the_heaviest_model_bar_spans_the_column_and_lighter_ones_scale_down() {
-        let canvas: Canvas = render(&full(), &faces(), PAGE);
+        let canvas: Canvas = render(&full(), &faces(), PAGE, None);
         let first: u32 = (TOP + 3 * LIMIT_BLOCK + 50 + 15 + 2) as u32;
         let fourth: u32 = first + 3 * MODEL_ROW as u32;
         let probes: [Option<u8>; 4] = [
@@ -438,7 +619,7 @@ mod tests {
     fn a_meter_without_a_reset_prints_no_countdown() {
         let mut view: Dashboard = full();
         view.limits[0].resets_in = None;
-        let canvas: Canvas = render(&view, &faces(), PAGE);
+        let canvas: Canvas = render(&view, &faces(), PAGE, None);
         let rows: std::ops::Range<u32> = TOP as u32 + 70..(TOP + LIMIT_BLOCK) as u32;
         let first: bool = rows.clone().any(|y: u32| inked(&canvas, 0..512, y));
         let second: bool = rows

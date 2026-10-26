@@ -37,6 +37,18 @@ pub struct ModelRow {
     pub tokens: u64,
 }
 
+pub fn waiting() -> Dashboard {
+    Dashboard {
+        title: String::from("Claude Code"),
+        plan: String::from("waiting for devbox"),
+        limits: vec![],
+        days: vec![],
+        today: String::new(),
+        models: vec![],
+        updated: String::new(),
+    }
+}
+
 pub fn dashboard(record: &Record, now: DateTime<FixedOffset>) -> Dashboard {
     let mut models: Vec<ModelRow> = record
         .model_usage
@@ -459,6 +471,20 @@ mod tests {
             ..Record::default()
         };
         assert_eq!(dashboard(&record, at(NOW)).updated, "updated 19:39");
+    }
+
+    #[test]
+    fn before_the_first_push_the_page_says_it_is_waiting() {
+        let page: Dashboard = waiting();
+        assert_eq!(
+            (
+                page.plan.as_str(),
+                page.limits.len(),
+                page.days.len(),
+                page.models.len()
+            ),
+            ("waiting for devbox", 0, 0, 0)
+        );
     }
 
     #[test]

@@ -144,29 +144,44 @@ cargo test              # tests run on the PC; nothing in them needs the device
 limit's meter and reset countdown, tokens per day for the last week (today in bold, with
 its prompt and session counts), and the four heaviest models.
 
-The page is landscape, for a Kindle standing on its long edge. The PW2 has no
-accelerometer (its firmware's `accelerometer` property always reads `U`), so it cannot tell
-which way it is turned. Say where the USB port is instead: `usage --port right` (the
-default in `host/push-usage.sh`) or `--port left`, or set `KINDLE_PORT=left` for the push
-script. The page is drawn at 1024×758 and turned in software (`Canvas::upright` in
-`eink`) before it reaches the portrait framebuffer.
+The page is landscape, for a Kindle standing on its long edge. The ☰ button at the top
+right opens a menu:
 
-The PC pushes and the Kindle only draws:
+- **Orientation**: *USB left* or *USB right*, the side the Kindle's USB port is on. The
+  PW2 has no accelerometer (its firmware's `accelerometer` property always reads `U`), so
+  it cannot tell which way it is turned. The page is drawn at 1024×758 and turned in
+  software (`Canvas::upright` in `eink`) before it reaches the portrait framebuffer.
+- **Light**: −, + (steps of 3 on powerd's 0–25 scale) and Off/On, which remembers the
+  level.
+
+Both choices are saved in `/mnt/us/kindle-dev/usage.settings` and survive restarts.
+
+### How it runs
+
+`usage serve` runs on the Kindle and owns the screen. It reads touches from
+`/dev/input/event1`, takes pushes on the Unix socket `/var/run/usage.sock`, and feeds both
+through one pure state machine (`usage/src/app.rs`) whose effects (draw, set the light,
+save) the shell carries out. devbox pushes, and `usage push` fails loudly if the daemon is
+not running:
 
 ```sh
-host/push-usage.sh          # send the usage record to the Kindle and redraw
+host/push-usage.sh          # send the usage record to the dashboard
 host/push-usage.sh --flash  # the same, with a full refresh that clears ghosting
 ```
 
 - The data is Omarchy's own record, `~/.local/state/omarchy/agents/usage/claude.json`,
   which its collector rewrites about every 15 minutes. The record travels over SSH, so the
-  Kindle needs no network code and the PC opens no port.
-- The PC's clock is the only clock: `--now` carries its time and UTC offset, from which the
-  Kindle works out the countdowns and which row is today.
+  PC opens no port.
+- The PC's clock is the only clock: each push carries its time and UTC offset, and redraws
+  between pushes run that time forward. Countdowns and the "today" row come from it.
 - A systemd user timer runs the push every 5 minutes. Refreshes are quiet except in the
   first five minutes of each hour, when a full flash clears e-ink ghosting.
-- The page stays up while the Kindle sits in its screensaver. Waking the Kindle gives the
-  screen back to its own UI until the next push.
+
+Touch only works while the Kindle is awake: in its screensaver the touch controller is in
+deep sleep and raises no interrupt at all (measured: its IRQ count did not move through
+several taps). Dashboard mode therefore stops the Kindle's own UI (`stop lab126_gui`) and
+keeps the screensaver off (`lipc-set-prop com.lab126.powerd preventScreenSaver 1`). The
+power button then changes nothing; powerd stays `Active`.
 
 ## Drawing on the panel
 
