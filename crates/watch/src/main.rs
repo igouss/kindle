@@ -206,6 +206,9 @@ fn spawn_events(mut inotify: Inotify, sender: Sender<WatchDescriptor>) {
                 Err(e) => return eprintln!("inotify: {e}"),
             };
             for event in events {
+                if !event.name.is_some_and(workspaces::carries_state) {
+                    continue;
+                }
                 if sender.send(event.wd).is_err() {
                     return;
                 }

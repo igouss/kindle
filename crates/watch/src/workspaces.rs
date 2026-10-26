@@ -2,6 +2,13 @@ use std::path::{Path, PathBuf};
 
 const SKIPPED_DIRS: [&str; 4] = ["target", "node_modules", ".git", "mutants.out"];
 
+pub fn carries_state(file: &std::ffi::OsStr) -> bool {
+    let name: std::borrow::Cow<'_, str> = file.to_string_lossy();
+    [".db", ".db-wal", ".jsonl"]
+        .iter()
+        .any(|suffix: &&str| name.ends_with(suffix))
+}
+
 pub fn counted(workspace: &Path) -> bool {
     let text: std::borrow::Cow<'_, str> = workspace.to_string_lossy();
     !text.contains("/tests/") && !text.contains("temp_test")
@@ -57,6 +64,20 @@ mod tests {
             counted(Path::new("/home/u/Projects/p/.claude/worktrees/agent-a")),
         ];
         assert_eq!(probes, [true, false, false, true]);
+    }
+
+    #[test]
+    fn only_the_database_its_log_and_the_jsonl_carry_bead_state() {
+        let probes: [bool; 7] = [
+            carries_state(std::ffi::OsStr::new("beads.db")),
+            carries_state(std::ffi::OsStr::new("beads.db-wal")),
+            carries_state(std::ffi::OsStr::new("issues.jsonl")),
+            carries_state(std::ffi::OsStr::new("#18187483")),
+            carries_state(std::ffi::OsStr::new(".br-db-openers-e5f3.lock")),
+            carries_state(std::ffi::OsStr::new("last-touched")),
+            carries_state(std::ffi::OsStr::new("beads.db-shm")),
+        ];
+        assert_eq!(probes, [true, true, true, false, false, false, false]);
     }
 
     #[test]

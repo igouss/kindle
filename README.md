@@ -239,9 +239,10 @@ ssh kindle /mnt/us/kindle-dev/usage bead --now "$(date --iso-8601=seconds)" < be
 watcher uses inotify on every `.beads/` workspace under `~/Projects` (except paths containing
 `/tests/` or `temp_test`), and picks up new workspaces once a minute.
 
-- It wakes only on `MODIFY` and `MOVED_TO`. br's read-only commands (`list`, `show`,
-  `audit log`) raise `CLOSE_WRITE` on the database files and nothing else; a watcher that
-  woke on `CLOSE_WRITE` would be woken by its own queries, forever.
+- It wakes only on `MODIFY` and `MOVED_TO` of the files that carry bead state (names ending
+  `.db`, `.db-wal` or `.jsonl`). Its own read-only queries must never wake it, or it queries
+  itself forever: br's reads raise `CLOSE_WRITE` on the database files, and on an old-schema
+  database they also write an anonymous temp file (`#18187483`) in `.beads/`.
 - After half a second of quiet it asks each changed workspace, read-only, for its beads in
   progress, and when each moved to in progress (`br audit log`). The newest across all
   workspaces is pushed with its description; `null` when there is none.
@@ -259,8 +260,10 @@ host/check-watch.sh                       # start, claim, read, close in a scrat
 ```
 
 `host/check-watch.sh` drives the real Kindle: it exits 0 only if a new workspace pushes
-nothing, a claim pushes the bead, read-only br commands cause no query at all, and a close
-pushes nothing again.
+nothing, a claim pushes the bead, read-only br commands cause no query at all, a close
+pushes nothing again, and a copy of an old-schema workspace (beads_rust's
+`sample_beads_db_files/repro_beadsrust_import_write.*`, when present; it says SKIP when not)
+is queried once and never again.
 
 Touch only works while the Kindle is awake: in its screensaver the touch controller is in
 deep sleep and raises no interrupt at all (measured: its IRQ count did not move through
