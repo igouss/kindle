@@ -97,6 +97,14 @@ The Kindle needs a default route through the PC and DNS resolvers.
 host/install-job.sh kindle-uplink   # copies kindle/upstart/kindle-uplink.conf to /etc/upstart/
 ```
 
+The stock firewall (`/etc/sysconfig/iptables`, loaded by the `network` job) drops new
+connections on every interface but `usb0`. `kindle/upstart/firewall-open.conf` runs after it
+and accepts everything, so with Wi-Fi on the Kindle is reachable on the LAN, telnet included:
+
+```sh
+host/install-job.sh firewall-open
+```
+
 All the scripts reach the Kindle as `ssh kindle`, so add a host entry:
 
 ```
