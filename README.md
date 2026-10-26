@@ -13,9 +13,9 @@ the same numbers [Omarchy](https://omarchy.org)'s agents panel shows on the desk
 
 | Path | What it is |
 |---|---|
-| `eink/` | Rust library: an 8-bit gray canvas, TrueType text (Liberation Sans), and the panel refresh ioctls |
-| `hello/` | Test page: proves the cross-build and the refresh path |
-| `usage/` | The Claude Code usage dashboard |
+| `crates/eink/` | Rust library: an 8-bit gray canvas, TrueType text (Liberation Sans), and the panel refresh ioctls |
+| `crates/hello/` | Test page: proves the cross-build and the refresh path |
+| `crates/usage/` | The Claude Code usage dashboard |
 | `host/` | Scripts that run on the PC: build and run an app, push usage, install the Kindle's uplink job, verify the link |
 | `kindle/` | Files that run on the Kindle: the uplink upstart job and the link self-check |
 
@@ -161,7 +161,7 @@ Both choices are saved in `/mnt/us/kindle-dev/usage.settings` and survive restar
 
 `usage serve` runs on the Kindle and owns the screen. It reads touches from
 `/dev/input/event1`, takes pushes on the Unix socket `/var/run/usage.sock`, and feeds both
-through one pure state machine (`usage/src/app.rs`) whose effects (draw, set the light,
+through one pure state machine (`crates/usage/src/app.rs`) whose effects (draw, set the light,
 save) the shell carries out. devbox pushes, and `usage push` fails loudly if the daemon is
 not running:
 
@@ -228,7 +228,7 @@ redraws only when asked, with the `MXCFB_SEND_UPDATE` ioctl, and
 These ioctls differ between Kindle generations. The PW2 takes the 72-byte
 `mxcfb_update_data` and the 8-byte update marker from
 [FBInk](https://github.com/NiLuJe/FBInk)'s `eink/mxcfb-kindle.h`. An ioctl number encodes
-its struct's size, so compile-time asserts pin every struct size in `eink/src/epdc.rs`. That
+its struct's size, so compile-time asserts pin every struct size in `crates/eink/src/epdc.rs`. That
 file is the only place `unsafe` is allowed; the workspace denies it everywhere else.
 
 ## Tests
@@ -238,7 +238,7 @@ cargo test
 cargo mutants
 ```
 
-The drawing code is tested on the PC. `usage/golden/full.pgm` pins the dashboard's layout
+The drawing code is tested on the PC. `crates/usage/golden/full.pgm` pins the dashboard's layout
 pixel for pixel; after an intended layout change, look at the new page and rewrite it with
 `UPDATE_GOLDEN=1 cargo test -p usage golden`. Mutation testing with
 [cargo-mutants](https://mutants.rs) catches every viable mutant. `.cargo/mutants.toml`
@@ -262,4 +262,4 @@ points.
 
 The jailbreak, KUAL, MRPI and USBNetwork come from the MobileRead Kindle community, and
 NiLuJe's FBInk was the reference for the panel ioctls. Liberation Sans is © Google and Red
-Hat under the SIL Open Font License; see `eink/assets/LiberationSans-LICENSE`.
+Hat under the SIL Open Font License; see `crates/eink/assets/LiberationSans-LICENSE`.
