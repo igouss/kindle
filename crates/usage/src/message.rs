@@ -125,6 +125,29 @@ mod tests {
     }
 
     #[test]
+    fn what_the_watcher_sends_decodes_to_the_bead_it_describes() {
+        let wire: &str = include_str!("../../watch/src/snapshot/wire.json").trim_end();
+        let got: crate::bead::Bead =
+            bead(decode(&encode_bead(at("2026-10-26T09:40:00-04:00"), wire)).unwrap())
+                .bead
+                .unwrap();
+        assert_eq!(
+            (
+                got.project.as_str(),
+                got.id.as_str(),
+                got.started,
+                got.description.as_str()
+            ),
+            (
+                "kindle",
+                "kindle-bxx.6",
+                at("2026-10-26T09:35:01-04:00"),
+                "## What\n\nThe PC pushes the active bead."
+            )
+        );
+    }
+
+    #[test]
     fn a_bead_push_of_null_says_nothing_is_in_progress() {
         let feed: BeadFeed =
             bead(decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), "null")).unwrap());

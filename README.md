@@ -15,8 +15,9 @@ the same numbers [Omarchy](https://omarchy.org)'s agents panel shows on the desk
 |---|---|
 | `crates/eink/` | Rust library: an 8-bit gray canvas, TrueType text (Liberation Sans), and the panel refresh ioctls |
 | `crates/hello/` | Test page: proves the cross-build and the refresh path |
-| `crates/usage/` | The Claude Code usage dashboard |
-| `host/` | Scripts that run on the PC: build and run an app, collect and push usage, install the Kindle's jobs, verify the link |
+| `crates/usage/` | The dashboard: the bead being worked on, read page by page, and Claude Code usage |
+| `crates/watch/` | `kindle-watch`, the PC side: watches every br workspace and pushes the bead in progress |
+| `host/` | Scripts that run on the PC: build and run an app, collect and push usage, install the Kindle's jobs, verify the link; the watcher's user unit and its check |
 | `kindle/` | Files that run on the Kindle: the uplink upstart job and the link self-check |
 
 ## The device
@@ -231,6 +232,35 @@ ssh kindle /mnt/us/kindle-dev/usage bead --now "$(date --iso-8601=seconds)" < be
 - A push redraws only the tab it changes, if that tab is showing.
 - `started` and `--now` must be RFC 3339; a snapshot that is not a bead or `null` is refused
   before it reaches the socket.
+
+### The watcher
+
+`kindle-watch` runs on the PC and makes those pushes. br has no hooks by design, so the
+watcher uses inotify on every `.beads/` workspace under `~/Projects` (except paths containing
+`/tests/` or `temp_test`), and picks up new workspaces once a minute.
+
+- It wakes only on `MODIFY` and `MOVED_TO`. br's read-only commands (`list`, `show`,
+  `audit log`) raise `CLOSE_WRITE` on the database files and nothing else; a watcher that
+  woke on `CLOSE_WRITE` would be woken by its own queries, forever.
+- After half a second of quiet it asks each changed workspace, read-only, for its beads in
+  progress, and when each moved to in progress (`br audit log`). The newest across all
+  workspaces is pushed with its description; `null` when there is none.
+- It pushes only when that changes, and again every five minutes, so a restarted Kindle
+  catches up and the elapsed time stays honest. An unreachable Kindle is logged and tried
+  again a minute later.
+- The snapshot's shape is a contract: `crates/watch/src/snapshot/wire.json` is what the
+  watcher's test must produce and what the dashboard's test must decode.
+
+```sh
+cargo install --locked --path crates/watch
+systemctl --user enable --now ~/Projects/mine/kindle/host/kindle-watch.service
+journalctl --user -u kindle-watch -f      # queried …, pushed …
+host/check-watch.sh                       # start, claim, read, close in a scratch workspace
+```
+
+`host/check-watch.sh` drives the real Kindle: it exits 0 only if a new workspace pushes
+nothing, a claim pushes the bead, read-only br commands cause no query at all, and a close
+pushes nothing again.
 
 Touch only works while the Kindle is awake: in its screensaver the touch controller is in
 deep sleep and raises no interrupt at all (measured: its IRQ count did not move through

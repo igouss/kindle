@@ -1,0 +1,11 @@
+[Unit]
+Description=Push the bead being worked on to the Kindle over USB
+
+[Service]
+Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.cargo/bin/kindle-watch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

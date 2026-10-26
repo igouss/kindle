@@ -1,0 +1,17 @@
+[package]
+name = "watch"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "kindle-watch"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { workspace = true, features = ["clock"] }
+inotify = "0.11.5"
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
