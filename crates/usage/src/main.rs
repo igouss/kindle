@@ -64,7 +64,7 @@ fn push(now: DateTime<FixedOffset>, flash: bool) -> Result<String, String> {
         .read_to_string(&mut record)
         .map_err(|e: std::io::Error| format!("stdin: {e}"))?;
     record::parse(&record).map_err(|e: serde_json::Error| format!("usage record: {e}"))?;
-    let message: String = message::encode(now, flash, &record);
+    let message: String = message::encode_usage(now, flash, &record);
     let mut stream: UnixStream =
         UnixStream::connect(serve::SOCKET).map_err(|e: std::io::Error| {
             format!("{}: {e} (is `usage serve` running?)", serve::SOCKET)

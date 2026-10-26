@@ -10,7 +10,7 @@ use eink::epdc::{Epdc, Refresh};
 use eink::touch::{Debounce, EVENT_SIZE, Frames, TouchDown, parse};
 
 use crate::app::{self, Effect, Event, Feed, Light, Mode, State};
-use crate::message;
+use crate::message::{self, Message};
 use crate::screen::{self, Faces, MenuView};
 use crate::settings::{self, Settings};
 use crate::view::{self, Dashboard};
@@ -238,7 +238,7 @@ fn serve_push(mut stream: UnixStream, sender: &Sender<Inbound>) -> Result<(), ()
         Err(e) => format!("error reading push: {e}"),
         Ok(_) => match message::decode(&text) {
             Err(fault) => format!("error {fault}"),
-            Ok((feed, refresh)) => {
+            Ok(Message::Usage(feed, refresh)) => {
                 let (reply, answer): (Sender<String>, Receiver<String>) = mpsc::channel();
                 sender
                     .send(Inbound::Pushed(feed, refresh, reply))
