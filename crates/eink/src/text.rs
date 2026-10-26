@@ -29,6 +29,37 @@ impl Typeface {
             .ceil() as u32
     }
 
+    pub fn wrap(&self, text: &str, size: f32, width: u32) -> Vec<String> {
+        let mut lines: Vec<String> = vec![];
+        let mut line: String = String::new();
+        for word in text.split_whitespace() {
+            let joined: String = if line.is_empty() {
+                word.to_owned()
+            } else {
+                format!("{line} {word}")
+            };
+            if self.width(&joined, size) <= width {
+                line = joined;
+                continue;
+            }
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+            }
+            for c in word.chars() {
+                let longer: String = format!("{line}{c}");
+                if self.width(&longer, size) > width && !line.is_empty() {
+                    lines.push(std::mem::replace(&mut line, c.to_string()));
+                } else {
+                    line = longer;
+                }
+            }
+        }
+        if !line.is_empty() {
+            lines.push(line);
+        }
+        lines
+    }
+
     pub fn draw(
         &self,
         canvas: &mut Canvas,
@@ -68,6 +99,69 @@ mod tests {
             .flat_map(|y: u32| (0..AREA.width).map(move |x: u32| (x, y)))
             .filter(|&(x, y): &(u32, u32)| canvas.pixel(x, y) != Some(WHITE))
             .collect()
+    }
+
+    #[test]
+    fn wrapping_nothing_gives_no_lines() {
+        let face: Typeface = Typeface::regular().unwrap();
+        assert_eq!(face.wrap("  ", 24.0, 300), Vec::<String>::new());
+    }
+
+    #[test]
+    fn text_that_fits_stays_on_one_line_with_single_spaces() {
+        let face: Typeface = Typeface::regular().unwrap();
+        assert_eq!(
+            face.wrap("one  two\nthree", 24.0, 300),
+            vec!["one two three"]
+        );
+    }
+
+    #[test]
+    fn many_words_break_at_spaces_and_every_line_fits() {
+        let face: Typeface = Typeface::regular().unwrap();
+        let text: &str = "the quick brown fox jumps over the lazy dog again and again";
+        let lines: Vec<String> = face.wrap(text, 24.0, 160);
+        assert!(
+            lines.len() > 2
+                && lines.iter().all(|l: &String| face.width(l, 24.0) <= 160)
+                && lines.join(" ") == text
+        );
+    }
+
+    #[test]
+    fn a_line_exactly_as_wide_as_the_space_fits() {
+        let face: Typeface = Typeface::regular().unwrap();
+        let width: u32 = face.width("one two", 24.0);
+        assert_eq!(
+            (
+                face.wrap("one two", 24.0, width),
+                face.wrap("one two", 24.0, width - 1)
+            ),
+            (
+                vec![String::from("one two")],
+                vec![String::from("one"), String::from("two")]
+            )
+        );
+    }
+
+    #[test]
+    fn letters_that_exactly_fill_the_line_stay_on_it() {
+        let face: Typeface = Typeface::regular().unwrap();
+        let width: u32 = face.width("abcd", 24.0);
+        assert_eq!(face.wrap("abcdefgh", 24.0, width)[0], "abcd");
+    }
+
+    #[test]
+    fn a_word_wider_than_the_line_is_broken_between_letters() {
+        let face: Typeface = Typeface::regular().unwrap();
+        let word: &str = "omarchy-expose-g3o.13-omarchy-expose-g3o.13";
+        let lines: Vec<String> = face.wrap(&format!("id {word}"), 24.0, 200);
+        assert!(
+            lines.len() > 2
+                && lines[0] == "id"
+                && lines.iter().all(|l: &String| face.width(l, 24.0) <= 200)
+                && lines[1..].concat() == word
+        );
     }
 
     #[test]
