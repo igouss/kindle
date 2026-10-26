@@ -16,7 +16,7 @@ the same numbers [Omarchy](https://omarchy.org)'s agents panel shows on the desk
 | `crates/eink/` | Rust library: an 8-bit gray canvas, TrueType text (Liberation Sans), and the panel refresh ioctls |
 | `crates/hello/` | Test page: proves the cross-build and the refresh path |
 | `crates/usage/` | The Claude Code usage dashboard |
-| `host/` | Scripts that run on the PC: build and run an app, push usage, install the Kindle's uplink job, verify the link |
+| `host/` | Scripts that run on the PC: build and run an app, collect and push usage, install the Kindle's jobs, verify the link |
 | `kindle/` | Files that run on the Kindle: the uplink upstart job and the link self-check |
 
 ## The device
@@ -141,8 +141,9 @@ cargo test              # tests run on the PC; nothing in them needs the device
 ## Claude Code usage
 
 `usage` draws what Omarchy's agents panel shows for Claude Code: the plan, each rate
-limit's meter and reset countdown, tokens per day for the last week (today in bold, with
-its prompt and session counts), and the four heaviest models.
+limit's meter and reset countdown, tokens per day for the last week summed over every
+machine that runs Claude Code (today in bold, with devbox's prompt and session counts),
+and the four heaviest models.
 
 The page is landscape, for a Kindle standing on its long edge. The ☰ button at the top
 right opens a menu:
@@ -173,6 +174,14 @@ host/push-usage.sh --flash  # the same, with a full refresh that clears ghosting
 - The data is Omarchy's own record, `~/.local/state/omarchy/agents/usage/claude.json`,
   which its collector rewrites about every 15 minutes. The record travels over SSH, so the
   PC opens no port.
+- Omarchy's record only knows devbox, so `host/tokens-by-day.sh` replaces its tokens per
+  day with [ccusage](https://github.com/ccusage/ccusage)'s: `ccusage claude daily` on
+  devbox and, over SSH, on every host in its `REMOTES` (fedora), summed per date in
+  devbox's time zone, the last seven dates always present and zero when idle. Each host
+  needs `npm i -g ccusage`; a global install also ends `npx ccusage@latest`'s download
+  prompt at every new release (ccusage itself checks for no updates). An unreachable host
+  fails the push, so the page keeps its last numbers and its *updated* time stops, rather
+  than showing a week without that host.
 - The PC's clock is the only clock: each push carries its time and UTC offset, and redraws
   between pushes run that time forward. Countdowns and the "today" row come from it.
 - A systemd user timer runs the push every 5 minutes. Refreshes are quiet except in the
