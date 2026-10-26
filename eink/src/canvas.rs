@@ -17,9 +17,37 @@ pub struct Rect {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Point {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Port {
     Left,
     Right,
+}
+
+impl Port {
+    pub fn flipped(self) -> Port {
+        match self {
+            Port::Left => Port::Right,
+            Port::Right => Port::Left,
+        }
+    }
+
+    pub fn to_page(self, panel: Point, page: Geometry) -> Point {
+        match self {
+            Port::Left => Point {
+                x: page.width as i32 - 1 - panel.y,
+                y: panel.x,
+            },
+            Port::Right => Point {
+                x: panel.y,
+                y: page.height as i32 - 1 - panel.x,
+            },
+        }
+    }
 }
 
 impl Geometry {
@@ -219,6 +247,82 @@ mod tests {
         let page: Canvas = numbered(WIDE);
         let back: Canvas = page.upright(Port::Left, 2).upright(Port::Right, 3);
         assert_eq!(back.pixels(), page.pixels());
+    }
+
+    fn marked_on_panel(port: Port, mark: Point) -> Point {
+        let page: Geometry = Geometry {
+            width: 5,
+            height: 3,
+            stride: 5,
+        };
+        let mut canvas: Canvas = Canvas::new(page);
+        canvas.fill_rect(
+            Rect {
+                left: mark.x,
+                top: mark.y,
+                width: 1,
+                height: 1,
+            },
+            BLACK,
+        );
+        let panel: Canvas = canvas.upright(port, 3);
+        let found: (u32, u32) = (0..5)
+            .flat_map(|y: u32| (0..3).map(move |x: u32| (x, y)))
+            .find(|&(x, y): &(u32, u32)| panel.pixel(x, y) == Some(BLACK))
+            .unwrap();
+        port.to_page(
+            Point {
+                x: found.0 as i32,
+                y: found.1 as i32,
+            },
+            page,
+        )
+    }
+
+    #[test]
+    fn a_panel_point_maps_back_to_the_page_point_drawn_there() {
+        let marks: [Point; 3] = [
+            Point { x: 0, y: 0 },
+            Point { x: 4, y: 1 },
+            Point { x: 2, y: 2 },
+        ];
+        let back: Vec<(Point, Point)> = marks
+            .iter()
+            .map(|&m: &Point| {
+                (
+                    marked_on_panel(Port::Left, m),
+                    marked_on_panel(Port::Right, m),
+                )
+            })
+            .collect();
+        assert_eq!(
+            back,
+            marks
+                .iter()
+                .map(|&m: &Point| (m, m))
+                .collect::<Vec<(Point, Point)>>()
+        );
+    }
+
+    #[test]
+    fn the_tap_on_updated_lands_on_updated_with_the_port_right() {
+        let page: Geometry = Geometry {
+            width: 1024,
+            height: 758,
+            stride: 1024,
+        };
+        assert_eq!(
+            Port::Right.to_page(Point { x: 669, y: 907 }, page),
+            Point { x: 907, y: 88 }
+        );
+    }
+
+    #[test]
+    fn flipping_swaps_the_sides() {
+        assert_eq!(
+            (Port::Left.flipped(), Port::Right.flipped()),
+            (Port::Right, Port::Left)
+        );
     }
 
     #[test]
