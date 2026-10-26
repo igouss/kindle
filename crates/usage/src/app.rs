@@ -24,9 +24,9 @@ impl Feed {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
-    Dashboard,
-    Menu,
+pub enum Menu {
+    Closed,
+    Open,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub fn initial_light(saved: Settings, current: u32, max: u32) -> Light {
 
 #[derive(Debug, PartialEq)]
 pub struct State {
-    pub mode: Mode,
+    pub menu: Menu,
     pub port: Port,
     pub light: Light,
     pub feed: Option<Feed>,
@@ -109,29 +109,29 @@ pub fn step(state: State, event: Event) -> (State, Vec<Effect>) {
 
 fn tap(state: State, hit: Hit) -> (State, Vec<Effect>) {
     let current: Light = state.light;
-    match (state.mode, hit) {
-        (Mode::Dashboard, Hit::Button) => (
+    match (state.menu, hit) {
+        (Menu::Closed, Hit::Button) => (
             State {
-                mode: Mode::Menu,
+                menu: Menu::Open,
                 ..state
             },
             vec![Effect::Draw(Refresh::Quiet)],
         ),
-        (Mode::Dashboard, Hit::Target(_) | Hit::Panel | Hit::Outside) => (state, vec![]),
-        (Mode::Menu, Hit::Button | Hit::Outside | Hit::Target(Target::Close)) => (
+        (Menu::Closed, Hit::Target(_) | Hit::Panel | Hit::Outside) => (state, vec![]),
+        (Menu::Open, Hit::Button | Hit::Outside | Hit::Target(Target::Close)) => (
             State {
-                mode: Mode::Dashboard,
+                menu: Menu::Closed,
                 ..state
             },
             vec![Effect::Draw(Refresh::Quiet)],
         ),
-        (Mode::Menu, Hit::Panel) => (state, vec![]),
-        (Mode::Menu, Hit::Target(Target::KindleUi)) => (state, vec![Effect::Exit]),
-        (Mode::Menu, Hit::Target(Target::PortLeft)) => turn(state, Port::Left),
-        (Mode::Menu, Hit::Target(Target::PortRight)) => turn(state, Port::Right),
-        (Mode::Menu, Hit::Target(Target::Dimmer)) => light(state, current.stepped(false)),
-        (Mode::Menu, Hit::Target(Target::Brighter)) => light(state, current.stepped(true)),
-        (Mode::Menu, Hit::Target(Target::LightSwitch)) => {
+        (Menu::Open, Hit::Panel) => (state, vec![]),
+        (Menu::Open, Hit::Target(Target::KindleUi)) => (state, vec![Effect::Exit]),
+        (Menu::Open, Hit::Target(Target::PortLeft)) => turn(state, Port::Left),
+        (Menu::Open, Hit::Target(Target::PortRight)) => turn(state, Port::Right),
+        (Menu::Open, Hit::Target(Target::Dimmer)) => light(state, current.stepped(false)),
+        (Menu::Open, Hit::Target(Target::Brighter)) => light(state, current.stepped(true)),
+        (Menu::Open, Hit::Target(Target::LightSwitch)) => {
             let switched: Light = Light {
                 on: !state.light.on,
                 ..state.light
@@ -188,9 +188,9 @@ mod tests {
         Event::Tap(centre(menu::BUTTON))
     }
 
-    fn state(mode: Mode, level: u32, on: bool) -> State {
+    fn state(menu: Menu, level: u32, on: bool) -> State {
         State {
-            mode,
+            menu,
             port: Port::Right,
             light: Light { level, on, max: 25 },
             feed: None,
@@ -207,9 +207,9 @@ mod tests {
     #[test]
     fn the_button_opens_the_menu() {
         assert_eq!(
-            step(state(Mode::Dashboard, 12, true), button()),
+            step(state(Menu::Closed, 12, true), button()),
             (
-                state(Mode::Menu, 12, true),
+                state(Menu::Open, 12, true),
                 vec![Effect::Draw(Refresh::Quiet)]
             )
         );
@@ -218,8 +218,8 @@ mod tests {
     #[test]
     fn on_the_dashboard_a_tap_anywhere_else_does_nothing() {
         let tapped: (State, Vec<Effect>) =
-            step(state(Mode::Dashboard, 12, true), on(Target::PortLeft));
-        assert_eq!(tapped, (state(Mode::Dashboard, 12, true), vec![]));
+            step(state(Menu::Closed, 12, true), on(Target::PortLeft));
+        assert_eq!(tapped, (state(Menu::Closed, 12, true), vec![]));
     }
 
     #[test]
@@ -231,11 +231,11 @@ mod tests {
         ];
         let closed: Vec<(State, Vec<Effect>)> = closers
             .into_iter()
-            .map(|e: Event| step(state(Mode::Menu, 12, true), e))
+            .map(|e: Event| step(state(Menu::Open, 12, true), e))
             .collect();
         let expected = || {
             (
-                state(Mode::Dashboard, 12, true),
+                state(Menu::Closed, 12, true),
                 vec![Effect::Draw(Refresh::Quiet)],
             )
         };
@@ -245,21 +245,21 @@ mod tests {
     #[test]
     fn a_tap_between_menu_buttons_does_nothing() {
         let tapped: (State, Vec<Effect>) = step(
-            state(Mode::Menu, 12, true),
+            state(Menu::Open, 12, true),
             Event::Tap(Point { x: 794, y: 200 }),
         );
-        assert_eq!(tapped, (state(Mode::Menu, 12, true), vec![]));
+        assert_eq!(tapped, (state(Menu::Open, 12, true), vec![]));
     }
 
     #[test]
     fn choosing_the_other_side_turns_the_page_with_a_flash_and_saves() {
         let (next, effects): (State, Vec<Effect>) =
-            step(state(Mode::Menu, 12, true), on(Target::PortLeft));
+            step(state(Menu::Open, 12, true), on(Target::PortLeft));
         assert_eq!(
-            (next.port, next.mode, effects),
+            (next.port, next.menu, effects),
             (
                 Port::Left,
-                Mode::Menu,
+                Menu::Open,
                 vec![Effect::Save, Effect::Draw(Refresh::Flash)]
             )
         );
@@ -268,16 +268,16 @@ mod tests {
     #[test]
     fn choosing_the_current_side_does_nothing() {
         assert_eq!(
-            step(state(Mode::Menu, 12, true), on(Target::PortRight)),
-            (state(Mode::Menu, 12, true), vec![])
+            step(state(Menu::Open, 12, true), on(Target::PortRight)),
+            (state(Menu::Open, 12, true), vec![])
         );
     }
 
     #[test]
     fn brighter_and_dimmer_step_the_light_and_set_it() {
         let brighter: (State, Vec<Effect>) =
-            step(state(Mode::Menu, 12, true), on(Target::Brighter));
-        let dimmer: (State, Vec<Effect>) = step(state(Mode::Menu, 12, true), on(Target::Dimmer));
+            step(state(Menu::Open, 12, true), on(Target::Brighter));
+        let dimmer: (State, Vec<Effect>) = step(state(Menu::Open, 12, true), on(Target::Dimmer));
         let effects = |level: u32| {
             vec![
                 Effect::Light(level),
@@ -288,32 +288,32 @@ mod tests {
         assert_eq!(
             (brighter, dimmer),
             (
-                (state(Mode::Menu, 15, true), effects(15)),
-                (state(Mode::Menu, 9, true), effects(9))
+                (state(Menu::Open, 15, true), effects(15)),
+                (state(Menu::Open, 9, true), effects(9))
             )
         );
     }
 
     #[test]
     fn the_light_stops_at_one_and_at_its_maximum() {
-        let floor: (State, Vec<Effect>) = step(state(Mode::Menu, 2, true), on(Target::Dimmer));
-        let ceiling: (State, Vec<Effect>) = step(state(Mode::Menu, 24, true), on(Target::Brighter));
+        let floor: (State, Vec<Effect>) = step(state(Menu::Open, 2, true), on(Target::Dimmer));
+        let ceiling: (State, Vec<Effect>) = step(state(Menu::Open, 24, true), on(Target::Brighter));
         assert_eq!((floor.0.light.level, ceiling.0.light.level), (1, 25));
     }
 
     #[test]
     fn at_a_limit_a_further_step_does_nothing() {
         assert_eq!(
-            step(state(Mode::Menu, 25, true), on(Target::Brighter)),
-            (state(Mode::Menu, 25, true), vec![])
+            step(state(Menu::Open, 25, true), on(Target::Brighter)),
+            (state(Menu::Open, 25, true), vec![])
         );
     }
 
     #[test]
     fn switching_off_keeps_the_level_and_switching_on_restores_it() {
-        let off: (State, Vec<Effect>) = step(state(Mode::Menu, 12, true), on(Target::LightSwitch));
+        let off: (State, Vec<Effect>) = step(state(Menu::Open, 12, true), on(Target::LightSwitch));
         let back: (State, Vec<Effect>) =
-            step(state(Mode::Menu, 12, false), on(Target::LightSwitch));
+            step(state(Menu::Open, 12, false), on(Target::LightSwitch));
         let effects = |level: u32| {
             vec![
                 Effect::Light(level),
@@ -324,8 +324,8 @@ mod tests {
         assert_eq!(
             (off, back),
             (
-                (state(Mode::Menu, 12, false), effects(0)),
-                (state(Mode::Menu, 12, true), effects(12))
+                (state(Menu::Open, 12, false), effects(0)),
+                (state(Menu::Open, 12, true), effects(12))
             )
         );
     }
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn a_step_while_off_switches_the_light_on() {
         assert_eq!(
-            step(state(Mode::Menu, 12, false), on(Target::Brighter))
+            step(state(Menu::Open, 12, false), on(Target::Brighter))
                 .0
                 .light,
             Light {
@@ -347,12 +347,12 @@ mod tests {
     #[test]
     fn a_push_stores_the_feed_and_redraws_whatever_is_showing() {
         let (next, effects): (State, Vec<Effect>) = step(
-            state(Mode::Menu, 12, true),
+            state(Menu::Open, 12, true),
             Event::Pushed(feed(), Refresh::Flash),
         );
         assert_eq!(
-            (next.mode, next.feed, effects),
-            (Mode::Menu, Some(feed()), vec![Effect::Draw(Refresh::Flash)])
+            (next.menu, next.feed, effects),
+            (Menu::Open, Some(feed()), vec![Effect::Draw(Refresh::Flash)])
         );
     }
 
@@ -419,10 +419,10 @@ mod tests {
     fn the_reply_names_the_side_and_the_light_actually_set() {
         let left: State = State {
             port: Port::Left,
-            ..state(Mode::Dashboard, 12, false)
+            ..state(Menu::Closed, 12, false)
         };
         assert_eq!(
-            (summary(&left), summary(&state(Mode::Dashboard, 12, true))),
+            (summary(&left), summary(&state(Menu::Closed, 12, true))),
             (
                 String::from("drawn, USB left, light 0"),
                 String::from("drawn, USB right, light 12")
@@ -433,8 +433,8 @@ mod tests {
     #[test]
     fn exit_to_kindle_leaves_and_nothing_else() {
         assert_eq!(
-            step(state(Mode::Menu, 12, true), on(Target::KindleUi)),
-            (state(Mode::Menu, 12, true), vec![Effect::Exit])
+            step(state(Menu::Open, 12, true), on(Target::KindleUi)),
+            (state(Menu::Open, 12, true), vec![Effect::Exit])
         );
     }
 }

@@ -9,7 +9,7 @@ use eink::canvas::{Canvas, Geometry, Port};
 use eink::epdc::{Epdc, Refresh};
 use eink::touch::{Debounce, EVENT_SIZE, Frames, TouchDown, parse};
 
-use crate::app::{self, Effect, Event, Feed, Light, Mode, State};
+use crate::app::{self, Effect, Event, Feed, Light, Menu, State};
 use crate::message::{self, Message};
 use crate::screen::{self, Faces, MenuView};
 use crate::settings::{self, Settings};
@@ -45,7 +45,7 @@ pub fn run() -> Result<(), String> {
     let current: u32 = powerd("flIntensity")?;
     let light: Light = app::initial_light(saved, current, max);
     let mut state: State = State {
-        mode: Mode::Dashboard,
+        menu: Menu::Closed,
         port: saved.port.unwrap_or(Port::Right),
         light,
         feed: None,
@@ -140,12 +140,12 @@ fn draw(shell: &mut Shell, state: &State, refresh: Refresh) -> Result<(), String
         Some(feed) => view::dashboard(&feed.record, feed.now_after(shell.pushed_at.elapsed())),
         None => view::waiting(),
     };
-    let menu: Option<MenuView> = match state.mode {
-        Mode::Menu => Some(MenuView {
+    let menu: Option<MenuView> = match state.menu {
+        Menu::Open => Some(MenuView {
             port: state.port,
             light: state.light,
         }),
-        Mode::Dashboard => None,
+        Menu::Closed => None,
     };
     let panel: Geometry = shell.epdc.geometry();
     let page: Canvas = screen::render(&view, &shell.faces, panel.landscape(), menu);
