@@ -84,30 +84,6 @@ fn an_unreadable_audit_or_time_is_refused() {
 }
 
 #[test]
-fn the_description_comes_from_show_as_a_list_or_one_object_and_null_is_empty() {
-    assert_eq!(
-        (
-            description(r#"[{"id":"x","description":"What"}]"#),
-            description(r#"{"id":"x","description":"text"}"#),
-            description(r#"[{"id":"x","description":null}]"#)
-        ),
-        (
-            Ok(String::from("What")),
-            Ok(String::from("text")),
-            Ok(String::new())
-        )
-    );
-}
-
-#[test]
-fn an_empty_or_unreadable_show_is_refused() {
-    assert!(
-        description("[]").is_err_and(|e: String| e.starts_with("br show:"))
-            && description("nope").is_err_and(|e: String| e.starts_with("br show:"))
-    );
-}
-
-#[test]
 fn with_no_candidates_nothing_is_newest() {
     assert_eq!(newest(&[]), None);
 }
@@ -138,20 +114,42 @@ fn started_at_the_same_moment_the_first_id_wins() {
 }
 
 #[test]
-fn the_wire_snapshot_is_exactly_what_the_kindle_decodes() {
+fn the_wire_payload_is_exactly_what_the_kindle_decodes() {
     let chosen: Candidate = Candidate {
         project: String::from("kindle"),
         issue: issue("kindle-bxx.6"),
         started: at("2026-10-26T09:35:01-04:00"),
     };
-    let sent: Snapshot = snapshot(
-        &chosen,
-        String::from("## What\n\nThe PC pushes the active bead."),
-    );
-    assert_eq!(wire(Some(&sent)), include_str!("wire.json").trim_end());
+    let member = |id: &str, title: &str, status: &str| crate::epic::Member {
+        id: id.to_owned(),
+        title: title.to_owned(),
+        status: status.to_owned(),
+    };
+    let payload: Payload = Payload {
+        bead: Some(snapshot(
+            &chosen,
+            String::from("## What\n\nThe PC pushes the active bead."),
+        )),
+        epic: Some(Epic {
+            id: String::from("kindle-bxx"),
+            title: String::from("Kindle shows the bead"),
+            beads: vec![
+                member("kindle-bxx.6", "watcher", "in_progress"),
+                member("kindle-bxx.5", "graph", "open"),
+            ],
+            blocks: vec![[String::from("kindle-bxx.6"), String::from("kindle-bxx.5")]],
+        }),
+    };
+    assert_eq!(wire(&payload), include_str!("wire.json").trim_end());
 }
 
 #[test]
-fn nothing_in_progress_goes_on_the_wire_as_null() {
-    assert_eq!(wire(None), "null");
+fn nothing_in_progress_and_no_epic_go_on_the_wire_as_nulls() {
+    assert_eq!(
+        wire(&Payload {
+            bead: None,
+            epic: None
+        }),
+        r#"{"bead":null,"epic":null}"#
+    );
 }

@@ -4,7 +4,7 @@ use chrono::{DateTime, FixedOffset, TimeDelta};
 use eink::canvas::{Point, Port};
 use eink::epdc::Refresh;
 
-use crate::bead::Bead;
+use crate::bead::{Bead, Epic};
 use crate::menu::{self, Direction, Hit, Target};
 use crate::record::Record;
 use crate::settings::Settings;
@@ -28,6 +28,7 @@ impl Feed {
 #[derive(Debug, PartialEq)]
 pub struct BeadFeed {
     pub bead: Option<Bead>,
+    pub epic: Option<Epic>,
     pub now: DateTime<FixedOffset>,
 }
 
@@ -101,6 +102,7 @@ pub struct State {
     pub light: Light,
     pub feed: Option<Feed>,
     pub work: Work,
+    pub epic: Option<Epic>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -155,7 +157,8 @@ fn shown(state: &State, view: View, refresh: Refresh) -> Vec<Effect> {
 }
 
 fn sighted(state: State, feed: BeadFeed, pages: usize) -> (State, Vec<Effect>) {
-    let BeadFeed { bead, now } = feed;
+    let BeadFeed { bead, epic, now } = feed;
+    let state: State = State { epic, ..state };
     let kept: Option<(usize, u32)> = match (&state.work, &bead) {
         (
             Work::Active {

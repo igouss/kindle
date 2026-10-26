@@ -29,6 +29,7 @@ fn state(menu: Menu, level: u32, on: bool) -> State {
         light: Light { level, on, max: 25 },
         feed: None,
         work: Work::Unknown,
+        epic: None,
     }
 }
 
@@ -284,6 +285,7 @@ const PAGES: usize = 5;
 fn sighting(bead: Option<Bead>) -> Event {
     Event::BeadPushed(
         BeadFeed {
+            epic: None,
             bead,
             now: at("2026-10-26T09:30:00-04:00"),
         },
@@ -389,6 +391,7 @@ fn the_same_bead_again_replaces_what_was_known_of_it() {
     };
     let later: Event = Event::BeadPushed(
         BeadFeed {
+            epic: None,
             bead: Some(edited.clone()),
             now: at("2026-10-26T10:00:00-04:00"),
         },
@@ -410,6 +413,7 @@ fn the_same_bead_again_replaces_what_was_known_of_it() {
 fn a_shorter_description_keeps_the_reader_on_its_last_page() {
     let shorter: Event = Event::BeadPushed(
         BeadFeed {
+            epic: None,
             bead: Some(bead("a")),
             now: at("2026-10-26T09:30:00-04:00"),
         },
@@ -425,6 +429,7 @@ fn a_shorter_description_keeps_the_reader_on_its_last_page() {
 fn a_bead_with_no_pages_counts_as_one() {
     let empty: Event = Event::BeadPushed(
         BeadFeed {
+            epic: None,
             bead: Some(bead("a")),
             now: at("2026-10-26T09:30:00-04:00"),
         },
@@ -631,4 +636,34 @@ fn exit_to_kindle_leaves_and_nothing_else() {
         step(state(Menu::Open, 12, true), on(Target::KindleUi)),
         (state(Menu::Open, 12, true), vec![Effect::Exit])
     );
+}
+
+#[test]
+fn every_bead_push_replaces_the_known_epic_even_when_nothing_is_in_progress() {
+    let epic = |status: crate::bead::Status| crate::bead::Epic {
+        id: String::from("e"),
+        title: String::from("epic"),
+        beads: vec![crate::bead::Member {
+            id: String::from("a"),
+            title: String::from("a"),
+            status,
+        }],
+        blocks: vec![],
+    };
+    let push = |bead: Option<Bead>, status: crate::bead::Status| {
+        Event::BeadPushed(
+            BeadFeed {
+                bead,
+                epic: Some(epic(status)),
+                now: at("2026-10-26T09:30:00-04:00"),
+            },
+            PAGES,
+        )
+    };
+    let (working, _): (State, Vec<Effect>) = step(
+        state(Menu::Closed, 12, true),
+        push(Some(bead("a")), crate::bead::Status::InProgress),
+    );
+    let (closed, _): (State, Vec<Effect>) = step(working, push(None, crate::bead::Status::Closed));
+    assert_eq!(closed.epic, Some(epic(crate::bead::Status::Closed)));
 }

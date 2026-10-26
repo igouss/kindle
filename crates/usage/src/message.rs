@@ -3,7 +3,7 @@ use eink::epdc::Refresh;
 use serde::Deserialize;
 
 use crate::app::{BeadFeed, Feed};
-use crate::bead::Wire;
+use crate::bead::{Payload, Wire};
 use crate::record::Record;
 
 #[derive(Deserialize)]
@@ -16,7 +16,7 @@ enum Push {
     },
     Bead {
         now: String,
-        bead: Option<Wire>,
+        payload: Payload,
     },
 }
 
@@ -33,9 +33,9 @@ pub fn encode_usage(now: DateTime<FixedOffset>, flash: bool, record: &str) -> St
     )
 }
 
-pub fn encode_bead(now: DateTime<FixedOffset>, bead: &str) -> String {
+pub fn encode_bead(now: DateTime<FixedOffset>, payload: &str) -> String {
     format!(
-        r#"{{"kind":"bead","now":"{}","bead":{bead}}}"#,
+        r#"{{"kind":"bead","now":"{}","payload":{payload}}}"#,
         now.to_rfc3339()
     )
 }
@@ -58,8 +58,9 @@ pub fn decode(text: &str) -> Result<Message, String> {
                 refresh,
             ))
         }
-        Push::Bead { now, bead } => Ok(Message::Bead(BeadFeed {
-            bead: bead.map(Wire::bead).transpose()?,
+        Push::Bead { now, payload } => Ok(Message::Bead(BeadFeed {
+            bead: payload.bead.map(Wire::bead).transpose()?,
+            epic: payload.epic,
             now: time(&now)?,
         })),
     }
@@ -84,6 +85,10 @@ mod tests {
         }
     }
 
+    fn payload(bead: &str) -> String {
+        format!(r#"{{"bead":{bead},"epic":null}}"#)
+    }
+
     fn bead(message: Message) -> BeadFeed {
         match message {
             Message::Bead(feed) => feed,
@@ -95,8 +100,13 @@ mod tests {
 
     #[test]
     fn a_bead_push_round_trips_every_field() {
-        let feed: BeadFeed =
-            bead(decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), SNAPSHOT)).unwrap());
+        let feed: BeadFeed = bead(
+            decode(&encode_bead(
+                at("2026-10-26T09:30:00-04:00"),
+                &payload(SNAPSHOT),
+            ))
+            .unwrap(),
+        );
         let got: crate::bead::Bead = feed.bead.unwrap();
         assert_eq!(
             (
@@ -125,32 +135,60 @@ mod tests {
     }
 
     #[test]
-    fn what_the_watcher_sends_decodes_to_the_bead_it_describes() {
+    fn what_the_watcher_sends_decodes_to_the_bead_and_epic_it_describes() {
         let wire: &str = include_str!("../../watch/src/snapshot/wire.json").trim_end();
-        let got: crate::bead::Bead =
-            bead(decode(&encode_bead(at("2026-10-26T09:40:00-04:00"), wire)).unwrap())
-                .bead
-                .unwrap();
+        let feed: BeadFeed =
+            bead(decode(&encode_bead(at("2026-10-26T09:40:00-04:00"), wire)).unwrap());
+        let got: crate::bead::Bead = feed.bead.unwrap();
+        let epic: crate::bead::Epic = feed.epic.unwrap();
         assert_eq!(
             (
                 got.project.as_str(),
                 got.id.as_str(),
                 got.started,
-                got.description.as_str()
+                got.description.as_str(),
+                epic.id.as_str(),
+                epic.beads
+                    .iter()
+                    .map(|m: &crate::bead::Member| (m.id.as_str(), m.status))
+                    .collect::<Vec<_>>(),
+                epic.blocks
             ),
             (
                 "kindle",
                 "kindle-bxx.6",
                 at("2026-10-26T09:35:01-04:00"),
-                "## What\n\nThe PC pushes the active bead."
+                "## What\n\nThe PC pushes the active bead.",
+                "kindle-bxx",
+                vec![
+                    ("kindle-bxx.6", crate::bead::Status::InProgress),
+                    ("kindle-bxx.5", crate::bead::Status::Open)
+                ],
+                vec![[String::from("kindle-bxx.6"), String::from("kindle-bxx.5")]]
             )
         );
     }
 
     #[test]
-    fn a_bead_push_of_null_says_nothing_is_in_progress() {
+    fn a_status_the_kindle_does_not_know_is_other_and_not_a_refusal() {
+        let epic: &str = r#"{"bead":null,"epic":{"id":"e","title":"t","beads":[{"id":"e.1","title":"a","status":"tombstone"}],"blocks":[]}}"#;
         let feed: BeadFeed =
-            bead(decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), "null")).unwrap());
+            bead(decode(&encode_bead(at("2026-10-26T09:40:00-04:00"), epic)).unwrap());
+        assert_eq!(
+            feed.epic.map(|e: crate::bead::Epic| e.beads[0].status),
+            Some(crate::bead::Status::Other)
+        );
+    }
+
+    #[test]
+    fn a_bead_push_of_null_says_nothing_is_in_progress() {
+        let feed: BeadFeed = bead(
+            decode(&encode_bead(
+                at("2026-10-26T09:30:00-04:00"),
+                &payload("null"),
+            ))
+            .unwrap(),
+        );
         assert_eq!(feed.bead, None);
     }
 
@@ -159,8 +197,14 @@ mod tests {
         let bad_start: String = SNAPSHOT.replace("2026-10-26T09:00:00-04:00", "this morning");
         let no_title: String = SNAPSHOT.replace(r#""title":"bead push","#, "");
         let refused: [Result<Message, String>; 2] = [
-            decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), &bad_start)),
-            decode(&encode_bead(at("2026-10-26T09:30:00-04:00"), &no_title)),
+            decode(&encode_bead(
+                at("2026-10-26T09:30:00-04:00"),
+                &payload(&bad_start),
+            )),
+            decode(&encode_bead(
+                at("2026-10-26T09:30:00-04:00"),
+                &payload(&no_title),
+            )),
         ];
         assert!(
             refused[0]

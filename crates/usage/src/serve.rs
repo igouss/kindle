@@ -23,7 +23,7 @@ const QUIET: Duration = Duration::from_millis(400);
 
 enum Inbound {
     Touch(TouchDown),
-    Pushed(Message, Sender<String>),
+    Pushed(Box<Message>, Sender<String>),
     Broken(String),
 }
 
@@ -52,6 +52,7 @@ pub fn run() -> Result<(), String> {
         light,
         feed: None,
         work: Work::Unknown,
+        epic: None,
     };
     let (sender, inbox): (Sender<Inbound>, Receiver<Inbound>) = mpsc::channel();
     spawn_touch(sender.clone());
@@ -83,17 +84,19 @@ pub fn run() -> Result<(), String> {
                 let page: Geometry = shell.epdc.geometry().landscape();
                 (Event::Tap(state.port.to_page(touch.at, page)), None)
             }
-            Inbound::Pushed(Message::Usage(feed, refresh), reply) => {
-                shell.pushed_at = Instant::now();
-                (Event::Pushed(feed, refresh), Some(reply))
-            }
-            Inbound::Pushed(Message::Bead(feed), reply) => {
-                shell.bead_pushed_at = Instant::now();
-                let pages: usize = feed.bead.as_ref().map_or(1, |bead: &crate::bead::Bead| {
-                    screen::pages(&shell.faces, &view::active_page(bead, feed.now, 0))
-                });
-                (Event::BeadPushed(feed, pages), Some(reply))
-            }
+            Inbound::Pushed(message, reply) => match *message {
+                Message::Usage(feed, refresh) => {
+                    shell.pushed_at = Instant::now();
+                    (Event::Pushed(feed, refresh), Some(reply))
+                }
+                Message::Bead(feed) => {
+                    shell.bead_pushed_at = Instant::now();
+                    let pages: usize = feed.bead.as_ref().map_or(1, |bead: &crate::bead::Bead| {
+                        screen::pages(&shell.faces, &view::active_page(bead, feed.now, 0))
+                    });
+                    (Event::BeadPushed(feed, pages), Some(reply))
+                }
+            },
         };
         let (next, effects): (State, Vec<Effect>) = app::step(state, event);
         state = next;
@@ -257,7 +260,7 @@ fn serve_push(mut stream: UnixStream, sender: &Sender<Inbound>) -> Result<(), ()
             Ok(message) => {
                 let (reply, answer): (Sender<String>, Receiver<String>) = mpsc::channel();
                 sender
-                    .send(Inbound::Pushed(message, reply))
+                    .send(Inbound::Pushed(Box::new(message), reply))
                     .map_err(|_| ())?;
                 answer
                     .recv()

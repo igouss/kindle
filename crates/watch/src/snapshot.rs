@@ -1,6 +1,8 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
+use crate::epic::Epic;
+
 #[derive(Deserialize)]
 struct Listed {
     issues: Vec<Issue>,
@@ -26,11 +28,6 @@ struct AuditEvent {
     event_type: String,
     new_value: Option<String>,
     timestamp: String,
-}
-
-#[derive(Deserialize)]
-struct Shown {
-    description: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,14 +69,10 @@ pub fn started(audit: &str, issue: &Issue) -> Result<DateTime<FixedOffset>, Stri
     DateTime::parse_from_rfc3339(text).map_err(|e: chrono::ParseError| format!("{text}: {e}"))
 }
 
-pub fn description(show: &str) -> Result<String, String> {
-    let shown: Shown = match serde_json::from_str::<Vec<Shown>>(show) {
-        Ok(mut list) if !list.is_empty() => list.swap_remove(0),
-        Ok(_) | Err(_) => {
-            serde_json::from_str(show).map_err(|e: serde_json::Error| format!("br show: {e}"))?
-        }
-    };
-    Ok(shown.description.unwrap_or_default())
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Payload {
+    pub bead: Option<Snapshot>,
+    pub epic: Option<Epic>,
 }
 
 pub fn newest(candidates: &[Candidate]) -> Option<&Candidate> {
@@ -103,8 +96,8 @@ pub fn snapshot(candidate: &Candidate, description: String) -> Snapshot {
     }
 }
 
-pub fn wire(snapshot: Option<&Snapshot>) -> String {
-    serde_json::to_string(&snapshot).unwrap_or_else(|_| String::from("null"))
+pub fn wire(payload: &Payload) -> String {
+    serde_json::to_string(payload).unwrap_or_default()
 }
 
 #[cfg(test)]

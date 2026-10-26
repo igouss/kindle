@@ -1,4 +1,6 @@
 mod br;
+mod epic;
+mod show;
 mod snapshot;
 mod workspaces;
 
@@ -11,7 +13,9 @@ use std::time::{Duration, Instant};
 
 use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
 
-use snapshot::{Candidate, Issue, Snapshot};
+use epic::Epic;
+use show::Shown;
+use snapshot::{Candidate, Issue, Payload, Snapshot};
 
 const SETTLE: Duration = Duration::from_millis(500);
 const RESCAN: Duration = Duration::from_secs(60);
@@ -63,7 +67,7 @@ fn candidates(workspace: &Path) -> Result<Vec<Candidate>, String> {
         .collect()
 }
 
-fn current(known: &BTreeMap<PathBuf, Vec<Candidate>>) -> Result<Option<Snapshot>, String> {
+fn chosen(known: &BTreeMap<PathBuf, Vec<Candidate>>) -> Option<(PathBuf, Candidate)> {
     let all: Vec<(PathBuf, Candidate)> = known
         .iter()
         .flat_map(|(path, list): (&PathBuf, &Vec<Candidate>)| {
@@ -74,22 +78,25 @@ fn current(known: &BTreeMap<PathBuf, Vec<Candidate>>) -> Result<Option<Snapshot>
         .iter()
         .map(|(_, c): &(PathBuf, Candidate)| c.clone())
         .collect();
-    let Some(chosen) = snapshot::newest(&flat) else {
-        return Ok(None);
-    };
-    let path: &PathBuf = all
-        .iter()
-        .find(|(_, c): &&(PathBuf, Candidate)| c == chosen)
-        .map(|(p, _): &(PathBuf, Candidate)| p)
-        .ok_or_else(|| String::from("chosen bead lost its workspace"))?;
-    let shown: String = br::run(path, &["show", &chosen.issue.id])?;
-    Ok(Some(snapshot::snapshot(
-        chosen,
-        snapshot::description(&shown)?,
-    )))
+    let newest: &Candidate = snapshot::newest(&flat)?;
+    all.into_iter()
+        .find(|(_, c): &(PathBuf, Candidate)| c == newest)
 }
 
-fn push(options: &Options, snapshot: Option<&Snapshot>) -> Result<String, String> {
+fn shown(workspace: &Path, id: &str) -> Result<Shown, String> {
+    show::parse(&br::run(workspace, &["show", id])?)
+}
+
+fn epic(workspace: &Path, root: &str) -> Result<Epic, String> {
+    let head: Shown = shown(workspace, root)?;
+    let children: Vec<Shown> = epic::children(&head)
+        .iter()
+        .map(|member: &epic::Member| shown(workspace, &member.id))
+        .collect::<Result<Vec<Shown>, String>>()?;
+    Ok(epic::assemble(&head, &children))
+}
+
+fn push(options: &Options, payload: &Payload) -> Result<String, String> {
     let now: String = chrono::Local::now().fixed_offset().to_rfc3339();
     let mut child: std::process::Child = Command::new("ssh")
         .args([
@@ -111,7 +118,7 @@ fn push(options: &Options, snapshot: Option<&Snapshot>) -> Result<String, String
         .stdin
         .take()
         .ok_or_else(|| String::from("ssh: no stdin"))?
-        .write_all(snapshot::wire(snapshot).as_bytes())
+        .write_all(snapshot::wire(payload).as_bytes())
         .map_err(|e: std::io::Error| format!("ssh: {e}"))?;
     let output: std::process::Output = child
         .wait_with_output()
@@ -133,8 +140,9 @@ struct Watcher {
     watches: Watches,
     watched: BTreeMap<WatchDescriptor, PathBuf>,
     known: BTreeMap<PathBuf, Vec<Candidate>>,
-    pushed: Option<Option<Snapshot>>,
+    pushed: Option<Payload>,
     pushed_at: Instant,
+    root: Option<(PathBuf, String)>,
 }
 
 impl Watcher {
@@ -175,17 +183,37 @@ impl Watcher {
         }
     }
 
+    fn payload(&mut self) -> Result<Payload, String> {
+        let Some((workspace, candidate)) = chosen(&self.known) else {
+            let epic: Option<Epic> = match &self.root {
+                Some((workspace, root)) => Some(epic(workspace, root)?),
+                None => None,
+            };
+            return Ok(Payload { bead: None, epic });
+        };
+        let head: Shown = shown(&workspace, &candidate.issue.id)?;
+        let root: String = epic::root(&head);
+        let epic: Epic = epic(&workspace, &root)?;
+        self.root = Some((workspace, root));
+        let bead: Snapshot = snapshot::snapshot(&candidate, head.description.unwrap_or_default());
+        Ok(Payload {
+            bead: Some(bead),
+            epic: Some(epic),
+        })
+    }
+
     fn publish(&mut self, heartbeat: bool) {
-        let next: Option<Snapshot> = match current(&self.known) {
+        let next: Payload = match self.payload() {
             Ok(next) => next,
             Err(fault) => return eprintln!("{fault}"),
         };
         if !heartbeat && self.pushed.as_ref() == Some(&next) {
             return;
         }
-        match push(&self.options, next.as_ref()) {
+        match push(&self.options, &next) {
             Ok(said) => {
                 let id: &str = next
+                    .bead
                     .as_ref()
                     .map_or("nothing", |s: &Snapshot| s.id.as_str());
                 eprintln!("pushed {id}: {said}");
@@ -229,6 +257,7 @@ fn run() -> Result<(), String> {
         known: BTreeMap::new(),
         pushed: None,
         pushed_at: Instant::now(),
+        root: None,
     };
     let all: Vec<PathBuf> = watcher.rescan();
     eprintln!(

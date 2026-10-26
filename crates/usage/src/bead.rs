@@ -41,3 +41,36 @@ impl Wire {
         })
     }
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Status {
+    Open,
+    InProgress,
+    Blocked,
+    Deferred,
+    Closed,
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct Member {
+    pub id: String,
+    pub title: String,
+    pub status: Status,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct Epic {
+    pub id: String,
+    pub title: String,
+    pub beads: Vec<Member>,
+    pub blocks: Vec<[String; 2]>,
+}
+
+#[derive(Deserialize)]
+pub struct Payload {
+    pub bead: Option<Wire>,
+    pub epic: Option<Epic>,
+}

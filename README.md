@@ -214,16 +214,21 @@ The description reads like a book, a page at a time:
 - The page count is worked out once per push, from the same layout that draws the page;
   time lives in the header so the layout depends only on the bead.
 
-A bead push carries a snapshot, the bead as JSON or `null`:
+A bead push carries a payload: the bead in progress, or `null`, and its epic, or `null`:
 
 ```sh
-ssh kindle /mnt/us/kindle-dev/usage bead --now "$(date --iso-8601=seconds)" < bead.json
+ssh kindle /mnt/us/kindle-dev/usage bead --now "$(date --iso-8601=seconds)" < payload.json
 ```
 
 ```json
-{"project":"kindle","id":"kindle-bxx.4","title":"…","priority":1,"issue_type":"task",
- "assignee":"elendal","started":"2026-10-26T09:00:00-04:00","description":"markdown"}
+{"bead":{"project":"kindle","id":"kindle-bxx.4","title":"…","priority":1,"issue_type":"task",
+         "assignee":"elendal","started":"2026-10-26T09:00:00-04:00","description":"markdown"},
+ "epic":{"id":"kindle-bxx","title":"…","beads":[{"id":"kindle-bxx.4","title":"…","status":"in_progress"}],
+         "blocks":[["kindle-bxx.3","kindle-bxx.4"]]}}
 ```
+
+`blocks` pairs run from the blocker to the bead it blocks. A status the dashboard does not know
+is kept as "other" rather than refused, so a new br status cannot break pushes.
 
 - A bead with a new id opens the Bead tab at its first page and closes the menu, with a full
   flash; the same id pushed again replaces what was known of it and keeps the reading
@@ -245,7 +250,10 @@ watcher uses inotify on every `.beads/` workspace under `~/Projects` (except pat
   database they also write an anonymous temp file (`#18187483`) in `.beads/`.
 - After half a second of quiet it asks each changed workspace, read-only, for its beads in
   progress, and when each moved to in progress (`br audit log`). The newest across all
-  workspaces is pushed with its description; `null` when there is none.
+  workspaces is pushed with its description and its epic: its parent's children with their
+  statuses and the blocking edges among them (a bead with no parent stands for its own
+  children, or for itself alone). When nothing is in progress, the bead is `null` and the
+  epic is the last one shown, read again, so the bead that just closed shows as closed.
 - It pushes only when that changes, and again every five minutes, so a restarted Kindle
   catches up and the elapsed time stays honest. An unreachable Kindle is logged and tried
   again a minute later.
