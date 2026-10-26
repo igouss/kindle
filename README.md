@@ -180,8 +180,7 @@ host/push-usage.sh --flash  # the same, with a full refresh that clears ghosting
   devbox's time zone, the last seven dates always present and zero when idle. Each host
   needs `npm i -g ccusage`; a global install also ends `npx ccusage@latest`'s download
   prompt at every new release (ccusage itself checks for no updates). An unreachable host
-  fails the push, so the page keeps its last numbers and its *updated* time stops, rather
-  than showing a week without that host.
+  is left out of the sum, with a line in the timer's journal; the push goes on.
 - The PC's clock is the only clock: each push carries its time and UTC offset, and redraws
   between pushes run that time forward. Countdowns and the "today" row come from it.
 - A systemd user timer runs the push every 5 minutes. Refreshes are quiet except in the

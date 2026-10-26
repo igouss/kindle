@@ -14,7 +14,11 @@ daily=(ccusage claude daily --json --offline --no-color --timezone "$tz" --since
 {
     "${daily[@]}"
     for remote in "${REMOTES[@]}"; do
-        "${SSH[@]}" "$remote" bash -lc "$(printf '%q' "$(printf '%q ' "${daily[@]}")")"
+        if usage="$("${SSH[@]}" "$remote" bash -lc "$(printf '%q' "$(printf '%q ' "${daily[@]}")")")"; then
+            printf '%s\n' "$usage"
+        else
+            echo "tokens-by-day: $remote unreachable, left out" >&2
+        fi
     done
 } | jq -en '[inputs.daily[]] as $rows
     | $ARGS.positional
