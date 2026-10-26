@@ -15,7 +15,6 @@ pub struct Issue {
     pub priority: u8,
     pub issue_type: String,
     pub assignee: Option<String>,
-    pub updated_at: String,
 }
 
 #[derive(Deserialize)]
@@ -25,9 +24,16 @@ struct Audit {
 
 #[derive(Deserialize)]
 struct AuditEvent {
+    id: i64,
     event_type: String,
+    actor: String,
     new_value: Option<String>,
     timestamp: String,
+}
+
+#[derive(Deserialize)]
+struct Configured {
+    value: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,18 +61,43 @@ pub fn in_progress(list: &str) -> Result<Vec<Issue>, String> {
         .map_err(|e: serde_json::Error| format!("br list: {e}"))
 }
 
-pub fn started(audit: &str, issue: &Issue) -> Result<DateTime<FixedOffset>, String> {
+pub fn actor(config: &str, user: Option<&str>) -> Result<String, String> {
+    let configured: Configured = serde_json::from_str(config)
+        .map_err(|e: serde_json::Error| format!("br config get actor: {e}"))?;
+    let named = |name: &str| -> Option<String> {
+        Some(name.trim().to_owned()).filter(|name: &String| !name.is_empty())
+    };
+    Ok(configured
+        .value
+        .as_deref()
+        .and_then(named)
+        .or_else(|| user.and_then(named))
+        .unwrap_or_else(|| String::from("unknown")))
+}
+
+pub fn started(audit: &str, me: &str) -> Result<Option<DateTime<FixedOffset>>, String> {
     let audit: Audit =
         serde_json::from_str(audit).map_err(|e: serde_json::Error| format!("br audit log: {e}"))?;
-    let moved: Option<&str> = audit
-        .events
-        .iter()
-        .find(|e: &&AuditEvent| {
-            e.event_type == "status_changed" && e.new_value.as_deref() == Some("in_progress")
+    let latest = |kind: &str| -> Option<&AuditEvent> {
+        audit
+            .events
+            .iter()
+            .filter(|e: &&AuditEvent| e.event_type == kind)
+            .max_by_key(|e: &&AuditEvent| e.id)
+    };
+    let moved: Option<&AuditEvent> = match latest("status_changed") {
+        Some(change) => {
+            Some(change).filter(|e: &&AuditEvent| e.new_value.as_deref() == Some("in_progress"))
+        }
+        None => latest("created"),
+    };
+    moved
+        .filter(|e: &&AuditEvent| e.actor == me)
+        .map(|e: &AuditEvent| {
+            DateTime::parse_from_rfc3339(&e.timestamp)
+                .map_err(|err: chrono::ParseError| format!("{}: {err}", e.timestamp))
         })
-        .map(|e: &AuditEvent| e.timestamp.as_str());
-    let text: &str = moved.unwrap_or(&issue.updated_at);
-    DateTime::parse_from_rfc3339(text).map_err(|e: chrono::ParseError| format!("{text}: {e}"))
+        .transpose()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

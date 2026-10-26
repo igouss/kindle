@@ -258,8 +258,15 @@ watcher uses inotify on every `.beads/` workspace under `~/Projects` (except pat
   itself forever: br's reads raise `CLOSE_WRITE` on the database files, and on an old-schema
   database they also write an anonymous temp file (`#18187483`) in `.beads/`.
 - After half a second of quiet it asks each changed workspace, read-only, for its beads in
-  progress, and when each moved to in progress (`br audit log`). The newest across all
-  workspaces is pushed with its description and its epic: its parent's children with their
+  progress and their local history (`br audit log`). Only a bead you moved to in progress on
+  this machine counts: its latest status change, or with none its creation, is an event
+  whose actor is you, as br names you (the workspace's `actor` setting, else `$USER`). A
+  cloned project carries its author's beads in progress in `.beads/issues.jsonl`; importing
+  them records no event, so they never show. Flagged assumption: a bead you created open
+  whose in-progress status arrived by a pull looks, in the local history, like one you
+  created in progress, and counts.
+- The newest of your beads across all workspaces, by when it moved to in progress, is
+  pushed with its description and its epic: its parent's children with their
   statuses and the blocking edges among them (a bead with no parent stands for its own
   children, or for itself alone). When nothing is in progress, the bead is `null` and the
   epic is the last one shown, read again, so the bead that just closed shows as closed.
@@ -273,12 +280,13 @@ watcher uses inotify on every `.beads/` workspace under `~/Projects` (except pat
 cargo install --locked --path crates/watch
 systemctl --user enable --now ~/Projects/mine/kindle/host/kindle-watch.service
 journalctl --user -u kindle-watch -f      # queried …, pushed …
-host/check-watch.sh                       # start, claim, read, close in a scratch workspace
+host/check-watch.sh                       # start, claim, read, close, clone in scratch workspaces
 ```
 
 `host/check-watch.sh` drives the real Kindle: it exits 0 only if a new workspace pushes
 nothing, a claim pushes the bead, read-only br commands cause no query at all, a close
-pushes nothing again, and a copy of an old-schema workspace (beads_rust's
+pushes nothing again, a clone whose author left two beads in progress never pushes
+either, and a copy of an old-schema workspace (beads_rust's
 `sample_beads_db_files/repro_beadsrust_import_write.*`, when present; it says SKIP when not)
 is queried once and never again.
 

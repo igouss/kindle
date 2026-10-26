@@ -7,7 +7,6 @@ fn issue(id: &str) -> Issue {
         priority: 1,
         issue_type: String::from("task"),
         assignee: Some(String::from("elendal")),
-        updated_at: String::from("2026-10-26T13:40:00Z"),
     }
 }
 
@@ -54,33 +53,133 @@ fn a_list_that_is_not_br_json_is_refused() {
     );
 }
 
+fn audit(events: &[&str]) -> String {
+    format!(r#"{{"issue_id":"x","events":[{}]}}"#, events.join(","))
+}
+
+const CREATED_BY_ME: &str =
+    r#"{"id":1,"event_type":"created","actor":"elendal","timestamp":"2026-10-26T12:00:00Z"}"#;
+const CREATED_UPSTREAM: &str =
+    r#"{"id":1,"event_type":"created","actor":"GentlePine","timestamp":"2026-10-26T12:00:00Z"}"#;
+const CLAIMED_BY_ME: &str = r#"{"id":2,"event_type":"status_changed","actor":"elendal","timestamp":"2026-10-26T12:30:00Z","old_value":"open","new_value":"in_progress"}"#;
+const CLAIMED_UPSTREAM: &str = r#"{"id":3,"event_type":"status_changed","actor":"GentlePine","timestamp":"2026-10-26T12:40:00Z","old_value":"open","new_value":"in_progress"}"#;
+const CLOSED_BY_ME: &str = r#"{"id":3,"event_type":"status_changed","actor":"elendal","timestamp":"2026-10-26T12:50:00Z","old_value":"in_progress","new_value":"closed"}"#;
+const COMMENTED_LATER: &str =
+    r#"{"id":4,"event_type":"commented","actor":"elendal","timestamp":"2026-10-26T13:00:00Z"}"#;
+
 #[test]
-fn work_started_at_the_latest_move_to_in_progress() {
+fn work_started_at_my_latest_move_to_in_progress() {
     assert_eq!(
-        started(AUDIT, &issue("kindle-bxx.6")),
-        Ok(at("2026-10-26T13:35:01.796670832Z"))
+        started(AUDIT, "elendal"),
+        Ok(Some(at("2026-10-26T13:35:01.796670832Z")))
     );
 }
 
 #[test]
-fn without_a_move_to_in_progress_work_started_when_last_updated() {
-    let created_in_progress: &str = r#"{"issue_id":"x","events":[{"id":1,"event_type":"created","actor":"a","timestamp":"2026-10-26T12:00:00Z"},{"id":2,"event_type":"status_changed","actor":"a","timestamp":"2026-10-26T12:30:00Z","old_value":"in_progress","new_value":"open"}]}"#;
+fn a_bead_with_no_local_history_is_not_mine() {
+    assert_eq!(started(&audit(&[]), "elendal"), Ok(None));
+}
+
+#[test]
+fn a_bead_i_created_in_progress_started_when_created() {
     assert_eq!(
-        started(created_in_progress, &issue("x")),
-        Ok(at("2026-10-26T13:40:00Z"))
+        started(&audit(&[CREATED_BY_ME, COMMENTED_LATER]), "elendal"),
+        Ok(Some(at("2026-10-26T12:00:00Z")))
+    );
+}
+
+#[test]
+fn a_bead_someone_else_created_in_progress_is_not_mine() {
+    assert_eq!(started(&audit(&[CREATED_UPSTREAM]), "elendal"), Ok(None));
+}
+
+#[test]
+fn a_bead_i_claimed_after_someone_else_created_it_is_mine() {
+    assert_eq!(
+        started(&audit(&[CREATED_UPSTREAM, CLAIMED_BY_ME]), "elendal"),
+        Ok(Some(at("2026-10-26T12:30:00Z")))
+    );
+}
+
+#[test]
+fn a_bead_i_created_but_someone_else_claimed_is_not_mine() {
+    assert_eq!(
+        started(&audit(&[CREATED_BY_ME, CLAIMED_UPSTREAM]), "elendal"),
+        Ok(None)
+    );
+}
+
+#[test]
+fn the_latest_claim_decides_whatever_the_order_listed() {
+    assert_eq!(
+        started(
+            &audit(&[CLAIMED_UPSTREAM, CLAIMED_BY_ME, CREATED_BY_ME]),
+            "elendal"
+        ),
+        Ok(None)
+    );
+}
+
+#[test]
+fn a_bead_whose_latest_status_change_left_in_progress_is_not_mine() {
+    assert_eq!(
+        started(
+            &audit(&[CREATED_BY_ME, CLAIMED_BY_ME, CLOSED_BY_ME]),
+            "elendal"
+        ),
+        Ok(None)
     );
 }
 
 #[test]
 fn an_unreadable_audit_or_time_is_refused() {
-    let bad_time: Issue = Issue {
-        updated_at: String::from("soon"),
-        ..issue("x")
-    };
+    let bad_time: &str = r#"{"id":1,"event_type":"created","actor":"elendal","timestamp":"soon"}"#;
     assert!(
-        started("{}", &issue("x")).is_err_and(|e: String| e.starts_with("br audit log:"))
-            && started(r#"{"events":[]}"#, &bad_time).is_err_and(|e: String| e.starts_with("soon"))
+        started("{}", "elendal").is_err_and(|e: String| e.starts_with("br audit log:"))
+            && started(&audit(&[bad_time]), "elendal")
+                .is_err_and(|e: String| e.starts_with("soon"))
     );
+}
+
+#[test]
+fn the_configured_actor_is_me() {
+    assert_eq!(
+        actor(r#"{"key":"actor","value":" iouri "}"#, Some("elendal")),
+        Ok(String::from("iouri"))
+    );
+}
+
+#[test]
+fn without_a_configured_actor_the_login_is_me() {
+    assert_eq!(
+        actor(r#"{"key":"actor","value":null}"#, Some(" elendal ")),
+        Ok(String::from("elendal"))
+    );
+}
+
+#[test]
+fn a_blank_configured_actor_falls_back_to_the_login() {
+    assert_eq!(
+        actor(r#"{"key":"actor","value":"  "}"#, Some("elendal")),
+        Ok(String::from("elendal"))
+    );
+}
+
+#[test]
+fn with_neither_actor_nor_login_br_records_unknown() {
+    assert_eq!(
+        actor(r#"{"key":"actor","value":null}"#, Some("")),
+        Ok(String::from("unknown"))
+    );
+    assert_eq!(
+        actor(r#"{"key":"actor","value":null}"#, None),
+        Ok(String::from("unknown"))
+    );
+}
+
+#[test]
+fn an_unreadable_config_is_refused() {
+    assert!(actor("Error", None).is_err_and(|e: String| e.starts_with("br config get actor:")));
 }
 
 #[test]

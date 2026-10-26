@@ -11,6 +11,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
+use chrono::{DateTime, FixedOffset};
 use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
 
 use epic::Epic;
@@ -54,16 +55,26 @@ fn options(args: &[String]) -> Result<Options, String> {
 fn candidates(workspace: &Path) -> Result<Vec<Candidate>, String> {
     let issues: Vec<Issue> =
         snapshot::in_progress(&br::run(workspace, &["list", "--status", "in_progress"])?)?;
+    if issues.is_empty() {
+        return Ok(vec![]);
+    }
+    let me: String = snapshot::actor(
+        &br::run(workspace, &["config", "get", "actor"])?,
+        std::env::var("USER").ok().as_deref(),
+    )?;
     issues
         .into_iter()
         .map(|issue: Issue| {
             let audit: String = br::run(workspace, &["audit", "log", &issue.id])?;
-            Ok(Candidate {
-                project: workspaces::project(workspace),
-                started: snapshot::started(&audit, &issue)?,
-                issue,
-            })
+            Ok(
+                snapshot::started(&audit, &me)?.map(|started: DateTime<FixedOffset>| Candidate {
+                    project: workspaces::project(workspace),
+                    started,
+                    issue,
+                }),
+            )
         })
+        .filter_map(Result::transpose)
         .collect()
 }
 
